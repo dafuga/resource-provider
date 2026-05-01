@@ -76,7 +76,7 @@ export async function makeBuyRamBytesAction(manager: Session, receiver: NameType
 		receiver,
 		bytes
 	};
-	return systemContract.action('buyrambytes', params);
+	return systemContract.action('buyrambytes', params, { authorization: [manager.permissionLevel] });
 }
 
 export async function makeBuyRamBytesSelfAction(manager: Session) {
