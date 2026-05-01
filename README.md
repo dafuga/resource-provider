@@ -103,6 +103,8 @@ To also keep 20kb of RAM free and buy another 10kb when that threshold is not me
 rpcli manager add ihasnocpunet 10 10 10 10 0.5 20 10
 ```
 
+Managed account RAM purchases are opt-in and only available on Jungle 4 for now. Set `ENABLE_MANAGED_ACCOUNT_RAM=true` in addition to configuring non-zero `min_ram_kb` and `inc_ram_kb` values for the accounts that should receive RAM.
+
 To modify the values set for an account, just run `rpcli manager add` again for the account and it will overwrite its configuration.
 
 ### Listing managed accounts

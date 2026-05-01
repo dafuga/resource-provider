@@ -62,6 +62,10 @@ MANAGER_ACCOUNT_NAME=
 # The minimum available NET (in kilobytes) the management account should maintain
 # MANAGER_MIN_KB=5
 
+# Allow managed accounts to receive automatic RAM purchases.
+# This is opt-in and only supported on Jungle 4 for now.
+# ENABLE_MANAGED_ACCOUNT_RAM=false
+
 # The amount of CPU (in milliseconds) the management account should powerup for itself when needed
 # MANAGER_INC_MS=10
 
