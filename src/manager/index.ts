@@ -25,7 +25,7 @@ export const managerJob = async function () {
 		}
 		for (const account of managerContext.managedAccounts) {
 			managerLog.debug('Running resource management', objectify({ account }));
-			manageAccountResources(manager, account, managerContext);
+			await manageAccountResources(manager, account, managerContext);
 		}
 	} catch (error) {
 		managerLog.error('managerJob failed', { error: String(error) });

@@ -72,6 +72,9 @@ MANAGER_ACCOUNT_NAME=
 # The amount of NET (in kilobytes) the management account should powerup for itself when needed
 # MANAGER_INC_KB=10
 
+# The maximum fee the manager should spend when powering up itself
+# MANAGER_MAX_FEE=0.25
+
 #######################################################
 ### PROVIDER CONFIGURATION
 #######################################################
