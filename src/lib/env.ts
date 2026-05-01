@@ -66,6 +66,13 @@ MANAGER_ACCOUNT_NAME=
 # This is opt-in and only supported on Jungle 4 for now.
 # ENABLE_MANAGED_ACCOUNT_RAM=false
 
+# The amount of free RAM (in KB) to keep on managed accounts by default.
+# MANAGED_ACCOUNT_RAM_MINIMUM_KB=100
+
+# The amount of RAM (in KB) to buy when a managed account falls below its RAM minimum.
+# Defaults to MANAGED_ACCOUNT_RAM_MINIMUM_KB when unset.
+# MANAGED_ACCOUNT_RAM_INCREMENT_KB=100
+
 # The amount of CPU (in milliseconds) the management account should powerup for itself when needed
 # MANAGER_INC_MS=10
 

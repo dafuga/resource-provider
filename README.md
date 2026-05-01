@@ -97,13 +97,15 @@ So for example, to ensure the `ihasnocpunet` account always has 10ms and 10kb ne
 rpcli manager add ihasnocpunet 10 10 10 10 0.5
 ```
 
-To also keep 20kb of RAM free and buy another 10kb when that threshold is not met:
+By default, managed accounts keep `100 KB` of free RAM and buy `100 KB` when they fall below that threshold. These defaults can be changed with `MANAGED_ACCOUNT_RAM_MINIMUM_KB` and `MANAGED_ACCOUNT_RAM_INCREMENT_KB`.
+
+To keep 20kb of RAM free and buy another 10kb when that threshold is not met for a specific account:
 
 ```
 rpcli manager add ihasnocpunet 10 10 10 10 0.5 20 10
 ```
 
-Managed account RAM purchases are opt-in and only available on Jungle 4 for now. Set `ENABLE_MANAGED_ACCOUNT_RAM=true` in addition to configuring non-zero `min_ram_kb` and `inc_ram_kb` values for the accounts that should receive RAM.
+Managed account RAM purchases are opt-in and only available on Jungle 4 for now. Set `ENABLE_MANAGED_ACCOUNT_RAM=true` to allow RAM purchases. Set a managed account's RAM values to `0 0` if that account should be excluded from RAM management.
 
 To modify the values set for an account, just run `rpcli manager add` again for the account and it will overwrite its configuration.
 
