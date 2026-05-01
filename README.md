@@ -2,7 +2,7 @@
 
 The Antelope Resource Provider application provides the following features:
 
-- **Resource Manager**: Automatically manage network resources (CPU + NET) of selected accounts.
+- **Resource Manager**: Automatically manage CPU, NET, and RAM resources of selected accounts.
 - (INCOMPLETE) **Resource Provider**: Provide an HTTP API that allows users to request the coverage of network resources by cosigning transactions.
 - (INCOMPLETE) **Request a Powerup**: Provide an HTTP API that allows users to request a powerup to their account by supplying the account name.
 
@@ -77,7 +77,7 @@ The `rpcli` allows you to define which accounts will be automatically managed.
 To add an account, use the `rpcli manager add` command:
 
 ```
-rpcli manager add <account> <min_ms> <min_kb> <inc_ms> <inc_kb> <max_fee>
+rpcli manager add <account> <min_ms> <min_kb> <inc_ms> <inc_kb> <max_fee> [min_ram_kb] [inc_ram_kb]
 ```
 
 The values required for this command are as follows:
@@ -88,11 +88,19 @@ The values required for this command are as follows:
 - `inc_ms` the amount of CPU (in milliseconds) to powerup when the minimum is not met
 - `inc_kb` the amount of NET (in kilobytes) to powerup when the minimum is not met
 - `max_fee` the maximum fee to pay for the powerup action
+- `min_ram_kb` the optional minimum amount of free RAM (in kilobytes) the account should have available
+- `inc_ram_kb` the optional amount of RAM (in kilobytes) to buy when the RAM minimum is not met
 
-So for example, to ensure the `ihasnocpunet` account always has 10ms and 10kb resources available, and setting the maximum fee to `0.5000 TOKEN`, the command would be:
+So for example, to ensure the `ihasnocpunet` account always has 10ms and 10kb network resources available, and setting the maximum fee to `0.5000 TOKEN`, the command would be:
 
 ```
 rpcli manager add ihasnocpunet 10 10 10 10 0.5
+```
+
+To also keep 20kb of RAM free and buy another 10kb when that threshold is not met:
+
+```
+rpcli manager add ihasnocpunet 10 10 10 10 0.5 20 10
 ```
 
 To modify the values set for an account, just run `rpcli manager add` again for the account and it will overwrite its configuration.
