@@ -44,11 +44,12 @@ export class UsageDatabase extends AbstractDatabase {
 			.run();
 	}
 
-	async cleanupExpired(): Promise<void> {
-		database
+	async cleanupExpired(): Promise<number> {
+		const result = database
 			.delete(this.schema.usage)
 			.where(lt(this.schema.usage.created_at, this.windowStart()))
 			.run();
+		return result.changes;
 	}
 
 	async resetAllUsage(): Promise<void> {
