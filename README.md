@@ -149,6 +149,8 @@ If no `PROVIDER_ACCOUNT_PRIVATEKEY` is set, one will be generated on first run.
 
 Free cosigning requires `PROVIDER_FREE_TRANSACTIONS_LIMIT_MS` and `PROVIDER_FREE_TRANSACTIONS_LIMIT_KB` (the per-account, per-window CPU/NET limits). Paid cosigning is on by default and appends a fee transfer to the transaction; see `.env.example` for fee, recipient, and memo configuration.
 
+Game Pass cosigning can be enabled with `ENABLE_SUBSCRIPTION_TRANSACTIONS=true`. The provider reads an authoritative on-chain `plans`-style table containing `owner` and `paid_until`, applies a separately configured rolling CPU/NET ceiling, and only sponsors original actions targeting `PROVIDER_SUBSCRIPTION_ALLOWED_CONTRACTS`. Expired or unavailable entitlement rows fail closed and continue through the normal free or paid provider policy.
+
 See `.env.example` for the full list of provider options, including resource-sufficiency gating (`PROVIDER_REQUIRE_RESOURCE_NEED`), the usage window (`PROVIDER_USAGE_WINDOW_HOURS`), and the light account cosigning feature (`ENABLE_LIGHTACCOUNT_PROVIDER`).
 
 ### Account Permission Setup

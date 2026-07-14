@@ -6,6 +6,7 @@ import type { Static } from 'elysia';
 import { v1ProviderRequestBody } from '$api/v1/types';
 import type { v1ResponseTypes } from '$api/v1/types';
 import { usageDatabase } from '$lib/db/models/provider/usage';
+import { hasActiveOnChainSubscription, transactionContractsAllowed } from '$lib/entitlements';
 import { providerLog } from '$lib/logger';
 import { addFeeAction } from '$lib/wharf/actions/fee';
 import { addNoopAction } from '$lib/wharf/actions/noop';
@@ -24,13 +25,21 @@ import {
 } from '$lib/wharf/validation';
 import {
 	ANTELOPE_SYSTEM_TOKEN,
+	ANTELOPE_NODEOS_API,
 	ENABLE_FREE_TRANSACTIONS,
 	ENABLE_PAID_TRANSACTIONS,
+	ENABLE_SUBSCRIPTION_TRANSACTIONS,
 	PROVIDER_FREE_TRANSACTIONS_LIMIT_KB,
 	PROVIDER_FREE_TRANSACTIONS_LIMIT_MS,
 	PROVIDER_PAID_TRANSACTIONS_FEE_DEFAULT_REF,
 	PROVIDER_PAID_TRANSACTIONS_FEE_MEMO,
-	PROVIDER_PAID_TRANSACTIONS_FEE_RECIPIENT
+	PROVIDER_PAID_TRANSACTIONS_FEE_RECIPIENT,
+	PROVIDER_SUBSCRIPTION_ALLOWED_CONTRACTS,
+	PROVIDER_SUBSCRIPTION_ENTITLEMENT_CONTRACT,
+	PROVIDER_SUBSCRIPTION_ENTITLEMENT_SCOPE,
+	PROVIDER_SUBSCRIPTION_ENTITLEMENT_TABLE,
+	PROVIDER_SUBSCRIPTION_LIMIT_KB,
+	PROVIDER_SUBSCRIPTION_LIMIT_MS
 } from 'src/config';
 
 function validateRequest(cosigner: PermissionLevel, request: SigningRequest): void {
@@ -48,17 +57,56 @@ function validateRequest(cosigner: PermissionLevel, request: SigningRequest): vo
 	}
 }
 
-async function checkQuota(account: string, resourceNeeds: ResourceNeeds): Promise<boolean> {
-	if (!ENABLE_FREE_TRANSACTIONS) {
-		return false;
-	}
+type SponsoredTier = 'subscription' | 'free';
 
+async function checkQuota(
+	account: string,
+	resourceNeeds: ResourceNeeds,
+	requestedContracts: string[]
+): Promise<SponsoredTier | null> {
 	const currentUsage = await usageDatabase.getUsage(account);
-	const cpuLimit = Number(PROVIDER_FREE_TRANSACTIONS_LIMIT_MS) * 1000;
-	const netLimit = Number(PROVIDER_FREE_TRANSACTIONS_LIMIT_KB) * 1000;
-
 	const projectedCpu = currentUsage.cpu + resourceNeeds.cpu;
 	const projectedNet = currentUsage.net + resourceNeeds.net;
+	if (
+		ENABLE_SUBSCRIPTION_TRANSACTIONS &&
+		ANTELOPE_NODEOS_API &&
+		PROVIDER_SUBSCRIPTION_ENTITLEMENT_CONTRACT &&
+		PROVIDER_SUBSCRIPTION_ENTITLEMENT_SCOPE &&
+		transactionContractsAllowed(requestedContracts, PROVIDER_SUBSCRIPTION_ALLOWED_CONTRACTS)
+	) {
+		let active = false;
+		try {
+			active = await hasActiveOnChainSubscription(account, {
+				nodeosApi: ANTELOPE_NODEOS_API,
+				contract: PROVIDER_SUBSCRIPTION_ENTITLEMENT_CONTRACT,
+				scope: PROVIDER_SUBSCRIPTION_ENTITLEMENT_SCOPE,
+				table: PROVIDER_SUBSCRIPTION_ENTITLEMENT_TABLE
+			});
+		} catch (error) {
+			providerLog.warn('Unable to verify on-chain subscription; using standard policy', {
+				account,
+				error: String(error)
+			});
+		}
+		const cpuLimit = PROVIDER_SUBSCRIPTION_LIMIT_MS * 1000;
+		const netLimit = PROVIDER_SUBSCRIPTION_LIMIT_KB * 1000;
+		const withinSubscriptionQuota = active && projectedCpu <= cpuLimit && projectedNet <= netLimit;
+
+		providerLog.debug('Subscription quota check', {
+			account,
+			active,
+			requestedContracts,
+			currentUsage,
+			resourceNeeds,
+			limits: { cpu: cpuLimit, net: netLimit },
+			withinQuota: withinSubscriptionQuota
+		});
+		if (withinSubscriptionQuota) return 'subscription';
+	}
+
+	if (!ENABLE_FREE_TRANSACTIONS) return null;
+	const cpuLimit = Number(PROVIDER_FREE_TRANSACTIONS_LIMIT_MS) * 1000;
+	const netLimit = Number(PROVIDER_FREE_TRANSACTIONS_LIMIT_KB) * 1000;
 
 	const withinQuota = projectedCpu <= cpuLimit && projectedNet <= netLimit;
 
@@ -70,7 +118,7 @@ async function checkQuota(account: string, resourceNeeds: ResourceNeeds): Promis
 		withinQuota
 	});
 
-	return withinQuota;
+	return withinQuota ? 'free' : null;
 }
 
 async function processRequest(
@@ -92,6 +140,7 @@ async function processRequest(
 
 	let transaction = await resolveTransaction(request, requester);
 	providerLog.debug('Transaction resolved', { actions: transaction.actions.length });
+	const requestedContracts = transaction.actions.map((action) => String(action.account));
 
 	transaction = await addNoopAction(transaction, cosigner);
 	providerLog.debug('Noop action added');
@@ -104,10 +153,14 @@ async function processRequest(
 		transaction = await addBuyRAMBytesAction(transaction, requester, ramBytes);
 	}
 
-	const withinQuota = await checkQuota(String(requester.actor), resourceNeeds);
+	const sponsoredTier = await checkQuota(
+		String(requester.actor),
+		resourceNeeds,
+		requestedContracts
+	);
 
-	if (withinQuota) {
-		providerLog.debug('Within free quota, signing transaction');
+	if (sponsoredTier) {
+		providerLog.debug('Within sponsored quota, signing transaction', { sponsoredTier });
 		const providerSignature = await signTransaction(transaction);
 		await usageDatabase.incrementUsage(
 			String(requester.actor),
@@ -115,7 +168,7 @@ async function processRequest(
 			resourceNeeds.net
 		);
 
-		providerLog.info('Provided resources (free)', {
+		providerLog.info(`Provided resources (${sponsoredTier})`, {
 			account: String(requester.actor),
 			cpu: resourceNeeds.cpu,
 			net: resourceNeeds.net
