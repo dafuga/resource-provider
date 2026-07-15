@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export const users = sqliteTable('accounts', {
 	account: text('account').primaryKey(),
@@ -31,4 +31,15 @@ export const usage = sqliteTable(
 		created_at: integer('created_at').notNull()
 	},
 	(table) => [index('idx_usage_account_created').on(table.account, table.created_at)]
+);
+
+export const config = sqliteTable(
+	'config',
+	{
+		scope: text('scope').notNull().default('global'),
+		key: text('key').notNull(),
+		value: text('value').notNull(),
+		updated_at: integer('updated_at').notNull()
+	},
+	(table) => [primaryKey({ columns: [table.scope, table.key] })]
 );

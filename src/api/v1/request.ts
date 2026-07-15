@@ -7,6 +7,7 @@ import { v1ProviderRequestBody } from '$api/v1/types';
 import type { v1ResponseTypes } from '$api/v1/types';
 import { usageDatabase } from '$lib/db/models/provider/usage';
 import { providerLog } from '$lib/logger';
+import { getInt, getString } from '$lib/settings';
 import { addFeeAction } from '$lib/wharf/actions/fee';
 import { addNoopAction } from '$lib/wharf/actions/noop';
 import { addBuyRAMBytesAction } from '$lib/wharf/actions/ram';
@@ -25,12 +26,7 @@ import {
 import {
 	ANTELOPE_SYSTEM_TOKEN,
 	ENABLE_FREE_TRANSACTIONS,
-	ENABLE_PAID_TRANSACTIONS,
-	PROVIDER_FREE_TRANSACTIONS_LIMIT_KB,
-	PROVIDER_FREE_TRANSACTIONS_LIMIT_MS,
-	PROVIDER_PAID_TRANSACTIONS_FEE_DEFAULT_REF,
-	PROVIDER_PAID_TRANSACTIONS_FEE_MEMO,
-	PROVIDER_PAID_TRANSACTIONS_FEE_RECIPIENT
+	ENABLE_PAID_TRANSACTIONS
 } from 'src/config';
 
 function validateRequest(cosigner: PermissionLevel, request: SigningRequest): void {
@@ -54,8 +50,8 @@ async function checkQuota(account: string, resourceNeeds: ResourceNeeds): Promis
 	}
 
 	const currentUsage = await usageDatabase.getUsage(account);
-	const cpuLimit = Number(PROVIDER_FREE_TRANSACTIONS_LIMIT_MS) * 1000;
-	const netLimit = Number(PROVIDER_FREE_TRANSACTIONS_LIMIT_KB) * 1000;
+	const cpuLimit = getInt('provider.free_transactions.limit_ms') * 1000;
+	const netLimit = getInt('provider.free_transactions.limit_kb') * 1000;
 
 	const projectedCpu = currentUsage.cpu + resourceNeeds.cpu;
 	const projectedNet = currentUsage.net + resourceNeeds.net;
@@ -148,15 +144,14 @@ async function processRequest(
 	});
 	providerLog.debug('Fee calculated', { fee: String(totalFee), providerFee: String(providerFee) });
 
-	const feeRef = ref || PROVIDER_PAID_TRANSACTIONS_FEE_DEFAULT_REF;
-	const feeMemo = feeRef
-		? `${PROVIDER_PAID_TRANSACTIONS_FEE_MEMO} | ref=${feeRef}`
-		: PROVIDER_PAID_TRANSACTIONS_FEE_MEMO;
+	const feeRef = ref || getString('provider.paid_transactions.fee_default_ref');
+	const feeMemoBase = getString('provider.paid_transactions.fee_memo')!;
+	const feeMemo = feeRef ? `${feeMemoBase} | ref=${feeRef}` : feeMemoBase;
 
 	transaction = await addFeeAction(
 		transaction,
 		requester,
-		PROVIDER_PAID_TRANSACTIONS_FEE_RECIPIENT || cosigner.actor,
+		getString('provider.paid_transactions.fee_recipient') || cosigner.actor,
 		providerFee,
 		feeMemo
 	);

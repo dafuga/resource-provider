@@ -1,12 +1,10 @@
 import { usageDatabase } from '$lib/db/models/provider/usage';
-import {
-	PROVIDER_FREE_TRANSACTIONS_LIMIT_KB,
-	PROVIDER_FREE_TRANSACTIONS_LIMIT_MS,
-	PROVIDER_USAGE_WINDOW_HOURS
-} from 'src/config';
+import { getInt, getSetting } from '$lib/settings';
 
 export async function usage({ params }: { params: { account: string } }) {
 	const currentUsage = await usageDatabase.getUsage(params.account);
+	const limitMs = getSetting('provider.free_transactions.limit_ms');
+	const limitKb = getSetting('provider.free_transactions.limit_kb');
 
 	return {
 		account: params.account,
@@ -15,11 +13,11 @@ export async function usage({ params }: { params: { account: string } }) {
 			net: currentUsage.net
 		},
 		quota: {
-			cpu: Number(PROVIDER_FREE_TRANSACTIONS_LIMIT_MS) * 1000,
-			net: Number(PROVIDER_FREE_TRANSACTIONS_LIMIT_KB) * 1000
+			cpu: typeof limitMs === 'number' ? limitMs * 1000 : null,
+			net: typeof limitKb === 'number' ? limitKb * 1000 : null
 		},
 		window: {
-			hours: PROVIDER_USAGE_WINDOW_HOURS
+			hours: getInt('provider.usage.window_hours')
 		}
 	};
 }

@@ -2,7 +2,7 @@ import { and, eq, gt, lt, sql } from 'drizzle-orm';
 
 import { database } from '$lib/db';
 import { AbstractDatabase } from '$lib/db/abstract';
-import { PROVIDER_USAGE_WINDOW_HOURS } from 'src/config';
+import { getInt } from '$lib/settings';
 
 export interface AccountUsage {
 	account: string;
@@ -12,7 +12,7 @@ export interface AccountUsage {
 
 export class UsageDatabase extends AbstractDatabase {
 	private windowStart(): number {
-		return Math.floor(Date.now() / 1000) - PROVIDER_USAGE_WINDOW_HOURS * 3600;
+		return Math.floor(Date.now() / 1000) - getInt('provider.usage.window_hours') * 3600;
 	}
 
 	async getUsage(account: string): Promise<AccountUsage> {

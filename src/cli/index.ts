@@ -14,10 +14,12 @@ import { makeManagerRunCommand } from './manager/run';
 import { makeManagerSetupCommand } from './manager/setup';
 import { makeManagerUnauthorizeCommand } from './manager/unauthorize';
 import { makeProviderSetupCommand } from './provider/setup';
+import { makeConfigCommand } from './config';
 
 import { usageDatabase } from '$lib/db/models/provider/usage';
 import { createEnvironmentalFile } from '$lib/env';
-import { PROVIDER_USAGE_WINDOW_HOURS } from 'src/config';
+import { getInt, missingRequiredSettings } from '$lib/settings';
+import { warnRetiredEnvVars } from '$lib/settings/retired';
 
 const services = ['all', 'api', 'manager'];
 
@@ -28,8 +30,11 @@ export function prompt() {
 		.name('resource-provider')
 		.description('Antelope Resource Provider Service');
 
-	program
-		.command('config')
+	program.commandsGroup('Configuration');
+	program.addCommand(makeConfigCommand());
+	const env = program.command('env').description('Manage the .env configuration file');
+	env
+		.command('init')
 		.description('Create a new blank configuration file')
 		.action(async () => {
 			await createEnvironmentalFile();
@@ -44,7 +49,17 @@ export function prompt() {
 		)
 		.description('Run one or more resource provider services (e.g. all, api, manager)')
 		.action(async (service) => {
+			warnRetiredEnvVars();
 			if (service === 'all' || service === 'api') {
+				const missing = missingRequiredSettings();
+				if (missing.length > 0) {
+					for (const def of missing) {
+						generalLog.error(
+							`Missing required setting '${def.key}' (${def.description}). Set it with: rpcli config set ${def.key} <value>`
+						);
+					}
+					return;
+				}
 				const valid = await validateProviderAccount();
 				if (!valid) {
 					return;
@@ -88,7 +103,10 @@ export function prompt() {
 		.argument('<string>', 'account name to query')
 		.action(async (name) => {
 			const result = await usageDatabase.getUsage(name);
-			generalLog.info(`Usage for ${name} (last ${PROVIDER_USAGE_WINDOW_HOURS}h):`, result);
+			generalLog.info(
+				`Usage for ${name} (last ${getInt('provider.usage.window_hours')}h):`,
+				result
+			);
 		});
 	program.commandsGroup('Database Management');
 	program

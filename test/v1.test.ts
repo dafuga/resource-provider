@@ -1,8 +1,9 @@
-import { beforeAll, describe, expect, it } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import type { Elysia } from 'elysia';
 
 import { server } from '../src/provider';
 
+import { setSetting, unsetSetting } from '$lib/settings';
 import { PROVIDER_ACCOUNT_NAME, PROVIDER_ACCOUNT_PERMISSION } from 'src/config';
 
 const mockRequest =
@@ -32,9 +33,13 @@ function makeRequest(path: string, data: unknown) {
 
 describe('v1/resource_provider/request_transaction', () => {
 	beforeAll(() => {
+		setSetting('provider.require_resource_need', 'false');
 		const instance = server();
 		expect(instance).toBeDefined();
 		app = instance!;
+	});
+	afterAll(() => {
+		unsetSetting('provider.require_resource_need');
 	});
 	describe('signer validation', () => {
 		it('requires signer', async () => {
