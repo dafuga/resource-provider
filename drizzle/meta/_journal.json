@@ -57,6 +57,13 @@
       "when": 1783301918841,
       "tag": "0007_giant_shadow_king",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1784080934338,
+      "tag": "0008_futuristic_harry_osborn",
+      "breakpoints": true
     }
   ]
 }

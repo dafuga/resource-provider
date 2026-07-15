@@ -163,18 +163,28 @@ If no `PROVIDER_ACCOUNT_PRIVATEKEY` is set, one will be generated on first run.
 
 Provider policy is stored in the database and managed with `rpcli config` (see [Configuration](#configuration)). The service refuses to start if a setting required by an enabled feature is unset, and the startup error names the exact command to run.
 
-**Free cosigning** (`ENABLE_FREE_TRANSACTIONS=true`) requires per-account limits, tracked over a rolling usage window:
+**Free cosigning** (`ENABLE_FREE_TRANSACTIONS=true`) tracks per-account usage over a rolling window:
 
-```
-rpcli config set provider.free_transactions.limit_ms 5
-rpcli config set provider.free_transactions.limit_kb 10
-```
+| Setting                       | Default | Description                  |
+| ----------------------------- | ------- | ---------------------------- |
+| `provider.usage.window_hours` | 24      | Rolling usage window (hours) |
 
-| Setting                               | Default | Description                                        |
-| ------------------------------------- | ------- | -------------------------------------------------- |
-| `provider.free_transactions.limit_ms` | —       | CPU (ms) allowed per account per window (required) |
-| `provider.free_transactions.limit_kb` | —       | NET (kb) allowed per account per window (required) |
-| `provider.usage.window_hours`         | 24      | Rolling usage window (hours)                       |
+### Free-tier buckets and rules
+
+Free cosigning routes each transaction into a usage **bucket** based on **rules** that match the transaction's `contract::action`s. Each bucket has its own per-account CPU/NET limits and a fallback priority. Manage them with `rpcli rules`:
+
+    rpcli rules bucket add wildcard 1000 5 10          # a catch-all bucket: 5ms CPU / 10kb NET
+    rpcli rules add wildcard wildcard                  # a rule feeding it
+    rpcli rules allow wildcard '*::*'                  # matching every action
+
+    rpcli rules bucket add shipload 10 100 100         # a generous game bucket
+    rpcli rules add game shipload
+    rpcli rules allow game 'eon.shipload::*'
+    rpcli rules allow game 'nex.shipload::*'
+
+A transaction matches a rule when every action is covered by an `allow`/`require` pattern and every `require` pattern is present. Each authorizing account is billed the full cost against the highest-priority matching bucket it still has room in, spilling to lower-priority buckets when full. Delete the wildcard bucket to cover only specific contracts. The service refuses to start if free transactions are enabled and no bucket exists.
+
+Upgrading from the previous single-limit version: on first start, the old `provider.free_transactions.limit_ms/kb` values are seeded automatically into a `wildcard` bucket.
 
 **Paid cosigning** (`ENABLE_PAID_TRANSACTIONS=true`, the default) appends a fee transfer to the cosigned transaction:
 

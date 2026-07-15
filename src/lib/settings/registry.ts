@@ -1,6 +1,6 @@
 import { Asset } from '@wharfkit/antelope';
 
-import { ANTELOPE_SYSTEM_TOKEN, ENABLE_FREE_POWERUP, ENABLE_FREE_TRANSACTIONS } from 'src/config';
+import { ANTELOPE_SYSTEM_TOKEN, ENABLE_FREE_POWERUP } from 'src/config';
 
 export type SettingValue = number | boolean | string;
 
@@ -18,20 +18,6 @@ const systemSymbol = (ANTELOPE_SYSTEM_TOKEN || '4,TOKEN').split(',')[1];
 const positive = (value: SettingValue) => (Number(value) > 0 ? true : 'must be greater than 0');
 
 export const registry: SettingDefinition[] = [
-	{
-		key: 'provider.free_transactions.limit_ms',
-		type: 'integer',
-		description: 'Free tier CPU limit per account per usage window (milliseconds)',
-		requiredWhen: () => ENABLE_FREE_TRANSACTIONS,
-		validate: positive
-	},
-	{
-		key: 'provider.free_transactions.limit_kb',
-		type: 'integer',
-		description: 'Free tier NET limit per account per usage window (kilobytes)',
-		requiredWhen: () => ENABLE_FREE_TRANSACTIONS,
-		validate: positive
-	},
 	{
 		key: 'provider.usage.window_hours',
 		type: 'integer',

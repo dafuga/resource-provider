@@ -150,4 +150,12 @@ describe('v1/resource_provider/request_transaction', () => {
 			expect(response.ok).toBeTrue();
 		});
 	});
+	it('reports usage per bucket', async () => {
+		const response = await app.handle(
+			new Request('http://localhost/v2/resource/provider/usage/wharfkit1111')
+		);
+		const body = (await response.json()) as { buckets: Array<{ bucket: string }> };
+		expect(Array.isArray(body.buckets)).toBeTrue();
+		expect(body.buckets.some((b) => b.bucket === 'wildcard')).toBeTrue();
+	});
 });

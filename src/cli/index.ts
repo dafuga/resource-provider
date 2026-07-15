@@ -15,11 +15,16 @@ import { makeManagerSetupCommand } from './manager/setup';
 import { makeManagerUnauthorizeCommand } from './manager/unauthorize';
 import { makeProviderSetupCommand } from './provider/setup';
 import { makeConfigCommand } from './config';
+import { makeRulesCommand } from './rules';
 
 import { usageDatabase } from '$lib/db/models/provider/usage';
 import { createEnvironmentalFile } from '$lib/env';
+import { policyDatabase } from '$lib/db/models/provider/policy';
+import { bootstrapPolicy } from '$lib/rules/bootstrap';
 import { getInt, missingRequiredSettings } from '$lib/settings';
 import { warnRetiredEnvVars } from '$lib/settings/retired';
+
+import { ENABLE_FREE_TRANSACTIONS } from 'src/config';
 
 const services = ['all', 'api', 'manager'];
 
@@ -32,6 +37,7 @@ export function prompt() {
 
 	program.commandsGroup('Configuration');
 	program.addCommand(makeConfigCommand());
+	program.addCommand(makeRulesCommand());
 	const env = program.command('env').description('Manage the .env configuration file');
 	env
 		.command('init')
@@ -58,6 +64,13 @@ export function prompt() {
 							`Missing required setting '${def.key}' (${def.description}). Set it with: rpcli config set ${def.key} <value>`
 						);
 					}
+					return;
+				}
+				bootstrapPolicy();
+				if (ENABLE_FREE_TRANSACTIONS && policyDatabase.listBuckets().length === 0) {
+					generalLog.error(
+						'Free transactions are enabled but no buckets exist. Create one with: rpcli rules bucket add <name> <priority> <limit_ms> <limit_kb>'
+					);
 					return;
 				}
 				const valid = await validateProviderAccount();
@@ -102,10 +115,10 @@ export function prompt() {
 		.description('Get the total usage for a specific account name')
 		.argument('<string>', 'account name to query')
 		.action(async (name) => {
-			const result = await usageDatabase.getUsage(name);
+			const byBucket = usageDatabase.getUsageByBucket(name);
 			generalLog.info(
 				`Usage for ${name} (last ${getInt('provider.usage.window_hours')}h):`,
-				result
+				byBucket
 			);
 		});
 	program.commandsGroup('Database Management');

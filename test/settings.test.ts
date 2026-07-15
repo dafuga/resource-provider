@@ -51,11 +51,11 @@ describe('configDatabase', () => {
 });
 
 describe('settings registry', () => {
-	it('defines the free transaction limits as required', () => {
-		const def = getDefinition('provider.free_transactions.limit_ms');
+	it('defines the free powerup amount as conditionally required', () => {
+		const def = getDefinition('provider.free_powerup.ms');
 		expect(def).toBeDefined();
 		expect(def!.type).toBe('integer');
-		expect(def!.requiredWhen!()).toBeTrue();
+		expect(typeof def!.requiredWhen).toBe('function');
 	});
 	it('returns undefined for unknown keys', () => {
 		expect(getDefinition('provider.unknown')).toBeUndefined();
@@ -114,12 +114,11 @@ describe('settings module', () => {
 		expect(() => setSetting('provider.usage.window_hours', 'abc')).toThrow();
 		expect(getInt('provider.usage.window_hours')).toBe(24);
 	});
-	it('refuses to unset a required key', () => {
-		expect(() => unsetSetting('provider.free_transactions.limit_ms')).toThrow();
+	it('allows unsetting a key that is not currently required', () => {
+		expect(() => unsetSetting('provider.free_powerup.ms')).not.toThrow();
 	});
-	it('reports missing required settings', () => {
-		const missingBefore = missingRequiredSettings().map((def) => def.key);
-		expect(missingBefore).not.toContain('provider.free_transactions.limit_ms');
+	it('reports no missing required settings when defaults and disabled features cover the registry', () => {
+		expect(missingRequiredSettings()).toEqual([]);
 	});
 	it('serves stale values until the cache is invalidated', () => {
 		setSetting('provider.min_cpu_us', '55000');

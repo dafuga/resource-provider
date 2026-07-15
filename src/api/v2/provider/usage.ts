@@ -1,23 +1,21 @@
+import { policyDatabase } from '$lib/db/models/provider/policy';
 import { usageDatabase } from '$lib/db/models/provider/usage';
-import { getInt, getSetting } from '$lib/settings';
+import { getInt } from '$lib/settings';
 
 export async function usage({ params }: { params: { account: string } }) {
-	const currentUsage = await usageDatabase.getUsage(params.account);
-	const limitMs = getSetting('provider.free_transactions.limit_ms');
-	const limitKb = getSetting('provider.free_transactions.limit_kb');
+	const byBucket = usageDatabase.getUsageByBucket(params.account);
+	const buckets = policyDatabase.listBuckets().map((b) => {
+		const used = byBucket.find((u) => u.bucket === b.name);
+		return {
+			bucket: b.name,
+			usage: { cpu: used?.cpu ?? 0, net: used?.net ?? 0 },
+			limit: { cpu: b.limit_ms * 1000, net: b.limit_kb * 1000 }
+		};
+	});
 
 	return {
 		account: params.account,
-		usage: {
-			cpu: currentUsage.cpu,
-			net: currentUsage.net
-		},
-		quota: {
-			cpu: typeof limitMs === 'number' ? limitMs * 1000 : null,
-			net: typeof limitKb === 'number' ? limitKb * 1000 : null
-		},
-		window: {
-			hours: getInt('provider.usage.window_hours')
-		}
+		window: { hours: getInt('provider.usage.window_hours') },
+		buckets
 	};
 }
