@@ -70,14 +70,16 @@ export function getApp(): Elysia {
 		app.onError((context) => {
 			switch (context.code) {
 				case 'VALIDATION':
-					return {
+					return context.status(400, {
+						code: 400,
 						message: String(context.error),
 						all: context.error.all
-					};
+					});
 				default:
-					return {
+					return context.status(400, {
+						code: 400,
 						message: String(context.error)
-					};
+					});
 			}
 		});
 	}

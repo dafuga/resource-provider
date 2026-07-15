@@ -200,8 +200,16 @@ Configure the service connection with `PROVIDER_ELIGIBILITY_URL`, and optionally
 {
 	"chain_id": "...",
 	"account": "alice",
+	"requester": { "actor": "alice", "permission": "active" },
 	"gates": ["subscriber"],
-	"actions": [{ "account": "examplegame", "name": "play" }]
+	"actions": [
+		{
+			"account": "examplegame",
+			"name": "play",
+			"authorization": [{ "actor": "alice", "permission": "active" }],
+			"data": { "player": "alice" }
+		}
+	]
 }
 ```
 
@@ -212,6 +220,20 @@ The service returns the requested gate keys the account may use:
 ```
 
 Unknown response gates are ignored. Timeouts, errors, malformed responses, and an unconfigured service deny gated buckets while preserving any matching ungated fallback. This keeps the resource-provider generic: operators may connect subscriptions, allowlists, loyalty programs, or other account policy systems without embedding those products in the provider.
+
+For RNG Frontier Game Pass, run the provider with `ENABLE_FREE_TRANSACTIONS=true`, `ENABLE_PAID_TRANSACTIONS=false`, and `PROVIDER_REQUIRE_RESOURCE_NEED=true`. Point `PROVIDER_ELIGIBILITY_URL` at Frontier's `/api/resources/eligibility` endpoint, remove the wildcard rule/bucket, and configure one gated bucket containing only the normal game actions:
+
+```bash
+rpcli rules bucket add rng-game-pass 10 60000 5000
+rpcli rules bucket gate rng-game-pass rng-frontier-game-pass
+rpcli rules add rng-gameplay rng-game-pass
+for action in joinworld foundtown buildpost offertrade accepttrade canceltrade listgoods cancelgoods research specialize proposeally acceptally endalliance launchatk resolveatk revolt recruitunit dispatchunit queueunit cancelunitq resolveunit resolvesiege queueprod claimprod harvest harvesttile refine upgrade buildinfra levelbase launchraid resolveraid claimaward; do
+  rpcli rules allow rng-gameplay "rngfront.gm::${action}"
+done
+rpcli rules allow rng-gameplay 'eosio.token::transfer'
+```
+
+The action rule prevents unrelated contracts or admin actions from reaching the gated allowance. Frontier's eligibility endpoint then checks the active on-chain plan, requester authorization, and decoded action data; token transfers qualify only for positive `buy:<listing-id>` payments from the player to `rngfront.gm`.
 
 **Paid cosigning** (`ENABLE_PAID_TRANSACTIONS=true`, the default) appends a fee transfer to the cosigned transaction:
 

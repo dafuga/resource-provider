@@ -1,10 +1,21 @@
 import type { MatchAction, PolicyBucket } from '$lib/rules';
 
+export interface EligibilityAuthorization {
+	actor: string;
+	permission: string;
+}
+
+export interface EligibilityAction extends MatchAction {
+	authorization: EligibilityAuthorization[];
+	data: Record<string, unknown>;
+}
+
 export interface EligibilityCheck {
 	chain_id: string;
 	account: string;
+	requester: EligibilityAuthorization;
 	gates: string[];
-	actions: MatchAction[];
+	actions: EligibilityAction[];
 }
 
 export interface EligibilityHookOptions {

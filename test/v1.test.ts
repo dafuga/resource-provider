@@ -141,6 +141,7 @@ describe('v1/resource_provider/request_transaction', () => {
 			});
 			const response = await app.handle(request);
 			expect(response.ok).toBeFalse();
+			expect(response.status).toBe(400);
 		});
 	});
 	describe('appends cosigner noop', () => {

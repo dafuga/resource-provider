@@ -15,6 +15,15 @@ describe('external bucket eligibility', () => {
 	});
 
 	it('sends a generic account, action, and gate request with optional authentication', async () => {
+		const requester = { actor: 'alice', permission: 'active' };
+		const actions = [
+			{
+				account: 'game',
+				name: 'play',
+				authorization: [requester],
+				data: { player: 'alice' }
+			}
+		];
 		const fetcher = (async (_input: string | URL | Request, init?: RequestInit) => {
 			expect(init?.method).toBe('POST');
 			expect(init?.headers).toEqual({
@@ -24,8 +33,9 @@ describe('external bucket eligibility', () => {
 			expect(JSON.parse(String(init?.body))).toEqual({
 				chain_id: 'chain-id',
 				account: 'alice',
+				requester,
 				gates: ['event', 'subscriber'],
-				actions: [{ account: 'game', name: 'play' }]
+				actions
 			});
 			return Response.json({ eligible_gates: ['subscriber', 'not-requested'] });
 		}) as typeof fetch;
@@ -35,8 +45,9 @@ describe('external bucket eligibility', () => {
 				{
 					chain_id: 'chain-id',
 					account: 'alice',
+					requester,
 					gates: ['subscriber', 'event', 'subscriber'],
-					actions: [{ account: 'game', name: 'play' }]
+					actions
 				},
 				{ url: 'https://eligibility.example/check', bearerToken: 'secret', fetcher }
 			)
@@ -44,11 +55,20 @@ describe('external bucket eligibility', () => {
 	});
 
 	it('rejects failed and malformed hook responses', async () => {
+		const requester = { actor: 'alice', permission: 'active' };
 		const check = {
 			chain_id: 'chain-id',
 			account: 'alice',
+			requester,
 			gates: ['subscriber'],
-			actions: [{ account: 'game', name: 'play' }]
+			actions: [
+				{
+					account: 'game',
+					name: 'play',
+					authorization: [requester],
+					data: { player: 'alice' }
+				}
+			]
 		};
 		await expect(
 			requestEligibleGates(check, {

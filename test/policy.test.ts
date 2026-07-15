@@ -95,6 +95,33 @@ describe('usageDatabase buckets', () => {
 		expect(usageDatabase.purgeBucket('t_dead')).toBeGreaterThan(0);
 		expect(usageDatabase.getBucketUsage('t_purge', 't_dead')).toEqual({ cpu: 0, net: 0 });
 	});
+	it('atomically reserves the exact rolling bucket allowance', () => {
+		expect(
+			usageDatabase.reserveUsage(
+				[{ account: 't_atomic', bucket: 't_limit', limit_ms: 1, limit_kb: 1 }],
+				600,
+				600
+			)
+		).toBeTrue();
+		expect(
+			usageDatabase.reserveUsage(
+				[{ account: 't_atomic', bucket: 't_limit', limit_ms: 1, limit_kb: 1 }],
+				400,
+				400
+			)
+		).toBeTrue();
+		expect(
+			usageDatabase.reserveUsage(
+				[{ account: 't_atomic', bucket: 't_limit', limit_ms: 1, limit_kb: 1 }],
+				1,
+				0
+			)
+		).toBeFalse();
+		expect(usageDatabase.getBucketUsage('t_atomic', 't_limit')).toEqual({
+			cpu: 1000,
+			net: 1000
+		});
+	});
 });
 
 describe('rules CLI helpers', () => {

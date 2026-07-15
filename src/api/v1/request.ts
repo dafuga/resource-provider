@@ -7,15 +7,17 @@ import { v1ProviderRequestBody } from '$api/v1/types';
 import type { v1ResponseTypes } from '$api/v1/types';
 import { usageDatabase } from '$lib/db/models/provider/usage';
 import { getRequiredGates, requestEligibleGates } from '$lib/eligibility';
+import type { EligibilityAction } from '$lib/eligibility';
 import { providerLog } from '$lib/logger';
 import { loadPolicy, resolveCandidateBuckets, resolveFreeGrant } from '$lib/rules';
-import type { MatchAction, Policy, PolicyBucket } from '$lib/rules';
+import type { Policy, PolicyBucket } from '$lib/rules';
 import { getString } from '$lib/settings';
+import { objectify } from '$lib/utils';
 import { addFeeAction } from '$lib/wharf/actions/fee';
 import { addNoopAction } from '$lib/wharf/actions/noop';
 import { addBuyRAMBytesAction } from '$lib/wharf/actions/ram';
 import { getClient } from '$lib/wharf/client';
-import { getStaleContract, invalidateContractCache } from '$lib/wharf/contracts';
+import { getContract, getStaleContract, invalidateContractCache } from '$lib/wharf/contracts';
 import { RAM_SAFETY_BUFFER_BYTES, computeResourceNeeds } from '$lib/wharf/estimation';
 import { calculateCosts, calculateTotalFee } from '$lib/wharf/pricing';
 import { getProviderSession, signTransaction } from '$lib/wharf/session';
@@ -56,8 +58,9 @@ function validateRequest(cosigner: PermissionLevel, request: SigningRequest): vo
 
 async function resolveAccountEligibility(
 	policy: Policy,
-	actions: MatchAction[],
-	billed: string[]
+	actions: EligibilityAction[],
+	billed: string[],
+	requester: PermissionLevel
 ): Promise<Map<string, Set<string>>> {
 	const gates = getRequiredGates(resolveCandidateBuckets(policy, actions));
 	const eligibleByAccount = new Map<string, Set<string>>();
@@ -78,6 +81,10 @@ async function resolveAccountEligibility(
 						{
 							chain_id: ANTELOPE_CHAIN_ID ?? '',
 							account,
+							requester: {
+								actor: String(requester.actor),
+								permission: String(requester.permission)
+							},
 							gates,
 							actions
 						},
@@ -101,6 +108,25 @@ async function resolveAccountEligibility(
 	return eligibleByAccount;
 }
 
+async function describeEligibilityActions(
+	actions: Awaited<ReturnType<typeof resolveTransaction>>['actions']
+): Promise<EligibilityAction[]> {
+	return Promise.all(
+		actions.map(async (action) => {
+			const contract = await getContract(action.account);
+			return {
+				account: String(action.account),
+				name: String(action.name),
+				authorization: action.authorization.map((authorization) => ({
+					actor: String(authorization.actor),
+					permission: String(authorization.permission)
+				})),
+				data: objectify(action.decodeData(contract.abi)) as Record<string, unknown>
+			};
+		})
+	);
+}
+
 function accountCanUseBucket(
 	eligibleByAccount: Map<string, Set<string>>,
 	account: string,
@@ -122,17 +148,6 @@ async function processRequest(
 	if (userActions.length === 0 || userActions[0].authorization.length === 0) {
 		throw new Error('Transaction has no billable actions.');
 	}
-	const sufficiencySubject = userActions[0].authorization[0].actor;
-
-	let accountData: API.v1.AccountObject;
-	try {
-		accountData = await getClient().v1.chain.get_account(sufficiencySubject);
-	} catch {
-		throw new Error(`Unable to retrieve account data for ${sufficiencySubject}.`);
-	}
-	checkResourceSufficiency(accountData);
-	providerLog.debug('Resource sufficiency check passed');
-
 	const matchActions = userActions.map((action) => ({
 		account: String(action.account),
 		name: String(action.name)
@@ -142,6 +157,30 @@ async function processRequest(
 			userActions.flatMap((action) => action.authorization.map((auth) => String(auth.actor)))
 		)
 	];
+	const policy = ENABLE_FREE_TRANSACTIONS ? loadPolicy() : null;
+	const candidates = policy ? resolveCandidateBuckets(policy, matchActions) : [];
+	const eligibilityActions = getRequiredGates(candidates).length
+		? await describeEligibilityActions(userActions)
+		: [];
+	const eligibleByAccount = policy
+		? await resolveAccountEligibility(policy, eligibilityActions, billed, requester)
+		: new Map<string, Set<string>>();
+	const hasEligibleCandidate = candidates.some((bucket) =>
+		billed.every((account) => accountCanUseBucket(eligibleByAccount, account, bucket))
+	);
+	if (!hasEligibleCandidate && !ENABLE_PAID_TRANSACTIONS) {
+		throw new Error('Transaction is not eligible for resource sponsorship.');
+	}
+
+	const sufficiencySubject = userActions[0].authorization[0].actor;
+	let accountData: API.v1.AccountObject;
+	try {
+		accountData = await getClient().v1.chain.get_account(sufficiencySubject);
+	} catch {
+		throw new Error(`Unable to retrieve account data for ${sufficiencySubject}.`);
+	}
+	checkResourceSufficiency(accountData);
+	providerLog.debug('Resource sufficiency check passed');
 
 	transaction = await addNoopAction(transaction, cosigner);
 	providerLog.debug('Noop action added');
@@ -154,11 +193,7 @@ async function processRequest(
 		transaction = await addBuyRAMBytesAction(transaction, requester, ramBytes);
 	}
 
-	const policy = ENABLE_FREE_TRANSACTIONS ? loadPolicy() : null;
-	const eligibleByAccount = policy
-		? await resolveAccountEligibility(policy, matchActions, billed)
-		: new Map<string, Set<string>>();
-	const grant = policy
+	let grant = policy
 		? resolveFreeGrant(
 				policy,
 				matchActions,
@@ -168,13 +203,23 @@ async function processRequest(
 				(account, bucket) => accountCanUseBucket(eligibleByAccount, account, bucket)
 			)
 		: null;
+	if (grant && policy) {
+		const bucketByName = new Map(policy.buckets.map((bucket) => [bucket.name, bucket]));
+		const reservations = grant.flatMap(({ account, bucket }) => {
+			const limits = bucketByName.get(bucket);
+			return limits ? [{ account, bucket, ...limits }] : [];
+		});
+		if (
+			reservations.length !== grant.length ||
+			!usageDatabase.reserveUsage(reservations, resourceNeeds.cpu, resourceNeeds.net)
+		) {
+			grant = null;
+		}
+	}
 
 	if (grant) {
 		providerLog.debug('Free grant resolved', { grant });
 		const providerSignature = await signTransaction(transaction);
-		for (const { account, bucket } of grant) {
-			await usageDatabase.incrementUsage(account, resourceNeeds.cpu, resourceNeeds.net, bucket);
-		}
 		providerLog.info('Provided resources (free)', {
 			account: String(requester.actor),
 			cpu: resourceNeeds.cpu,
