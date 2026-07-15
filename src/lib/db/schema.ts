@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export const users = sqliteTable('accounts', {
 	account: text('account').primaryKey(),
@@ -28,7 +28,44 @@ export const usage = sqliteTable(
 		account: text('account').notNull(),
 		cpu: integer('cpu').notNull(),
 		net: integer('net').notNull(),
+		bucket: text('bucket').notNull().default('wildcard'),
 		created_at: integer('created_at').notNull()
 	},
-	(table) => [index('idx_usage_account_created').on(table.account, table.created_at)]
+	(table) => [
+		index('idx_usage_account_created').on(table.account, table.created_at),
+		index('idx_usage_account_bucket_created').on(table.account, table.bucket, table.created_at)
+	]
+);
+
+export const config = sqliteTable(
+	'config',
+	{
+		scope: text('scope').notNull().default('global'),
+		key: text('key').notNull(),
+		value: text('value').notNull(),
+		updated_at: integer('updated_at').notNull()
+	},
+	(table) => [primaryKey({ columns: [table.scope, table.key] })]
+);
+
+export const providerBucket = sqliteTable('provider_bucket', {
+	name: text('name').primaryKey(),
+	priority: integer('priority').notNull(),
+	limit_ms: integer('limit_ms').notNull(),
+	limit_kb: integer('limit_kb').notNull()
+});
+
+export const providerRule = sqliteTable('provider_rule', {
+	name: text('name').primaryKey(),
+	bucket: text('bucket').notNull()
+});
+
+export const providerRulePattern = sqliteTable(
+	'provider_rule_pattern',
+	{
+		rule: text('rule').notNull(),
+		kind: text('kind').notNull(),
+		pattern: text('pattern').notNull()
+	},
+	(table) => [primaryKey({ columns: [table.rule, table.kind, table.pattern] })]
 );
