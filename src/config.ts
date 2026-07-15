@@ -50,6 +50,27 @@ export const ENABLE_RESOURCE_PROVIDER = isENVTrue(process.env.ENABLE_RESOURCE_PR
 export const PROVIDER_ACCOUNT_NAME = process.env.PROVIDER_ACCOUNT_NAME;
 export const PROVIDER_ACCOUNT_PERMISSION = process.env.PROVIDER_ACCOUNT_PERMISSION;
 export const PROVIDER_ACCOUNT_PRIVATEKEY = process.env.PROVIDER_ACCOUNT_PRIVATEKEY;
+export const PROVIDER_ELIGIBILITY_URL = process.env.PROVIDER_ELIGIBILITY_URL;
+export const PROVIDER_ELIGIBILITY_BEARER_TOKEN = process.env.PROVIDER_ELIGIBILITY_BEARER_TOKEN;
+export const PROVIDER_ELIGIBILITY_TIMEOUT_MS = process.env.PROVIDER_ELIGIBILITY_TIMEOUT_MS
+	? Number(process.env.PROVIDER_ELIGIBILITY_TIMEOUT_MS)
+	: 2000;
+
+if (!Number.isInteger(PROVIDER_ELIGIBILITY_TIMEOUT_MS) || PROVIDER_ELIGIBILITY_TIMEOUT_MS <= 0) {
+	throw new Error('PROVIDER_ELIGIBILITY_TIMEOUT_MS must be a positive integer.');
+}
+
+if (PROVIDER_ELIGIBILITY_URL) {
+	let eligibilityUrl: URL;
+	try {
+		eligibilityUrl = new URL(PROVIDER_ELIGIBILITY_URL);
+	} catch {
+		throw new Error('PROVIDER_ELIGIBILITY_URL must be a valid HTTP or HTTPS URL.');
+	}
+	if (!['http:', 'https:'].includes(eligibilityUrl.protocol)) {
+		throw new Error('PROVIDER_ELIGIBILITY_URL must be a valid HTTP or HTTPS URL.');
+	}
+}
 
 if (ENABLE_RESOURCE_PROVIDER) {
 	if (!PROVIDER_ACCOUNT_NAME) {

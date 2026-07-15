@@ -9,7 +9,13 @@ describe('policyDatabase buckets', () => {
 	it('puts and gets a bucket', () => {
 		policyDatabase.putBucket('t_ship', 10, 100, 100);
 		const b = policyDatabase.getBucket('t_ship');
-		expect(b).toEqual({ name: 't_ship', priority: 10, limit_ms: 100, limit_kb: 100 });
+		expect(b).toEqual({
+			name: 't_ship',
+			priority: 10,
+			limit_ms: 100,
+			limit_kb: 100,
+			gate: null
+		});
 	});
 	it('upserts a bucket', () => {
 		policyDatabase.putBucket('t_ship', 10, 100, 100);
@@ -18,8 +24,16 @@ describe('policyDatabase buckets', () => {
 			name: 't_ship',
 			priority: 5,
 			limit_ms: 200,
-			limit_kb: 200
+			limit_kb: 200,
+			gate: null
 		});
+	});
+	it('sets and clears an external eligibility gate', () => {
+		policyDatabase.putBucket('t_gated', 5, 200, 200);
+		policyDatabase.setBucketGate('t_gated', 'subscriber');
+		expect(policyDatabase.getBucket('t_gated')?.gate).toBe('subscriber');
+		policyDatabase.setBucketGate('t_gated', null);
+		expect(policyDatabase.getBucket('t_gated')?.gate).toBeNull();
 	});
 	it('lists buckets ordered by priority then name', () => {
 		policyDatabase.putBucket('t_a', 1000, 20, 20);

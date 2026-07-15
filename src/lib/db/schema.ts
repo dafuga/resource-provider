@@ -52,7 +52,8 @@ export const providerBucket = sqliteTable('provider_bucket', {
 	name: text('name').primaryKey(),
 	priority: integer('priority').notNull(),
 	limit_ms: integer('limit_ms').notNull(),
-	limit_kb: integer('limit_kb').notNull()
+	limit_kb: integer('limit_kb').notNull(),
+	gate: text('gate')
 });
 
 export const providerRule = sqliteTable('provider_rule', {

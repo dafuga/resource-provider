@@ -186,6 +186,33 @@ A transaction matches a rule when every action is covered by an `allow`/`require
 
 Upgrading from the previous single-limit version: on first start, the old `provider.free_transactions.limit_ms/kb` values are seeded automatically into a `wildcard` bucket.
 
+#### External bucket eligibility
+
+Buckets can optionally require an eligibility **gate** supplied by an external service. Action rules still decide which buckets a transaction may use; the external service can only approve a gate on those already-matched buckets and cannot broaden the transaction's allowed contracts or actions. Ungated buckets remain available without the service.
+
+    rpcli rules bucket add premium 10 60000 5000
+    rpcli rules bucket gate premium subscriber
+    rpcli rules bucket ungate premium
+
+Configure the service connection with `PROVIDER_ELIGIBILITY_URL`, and optionally `PROVIDER_ELIGIBILITY_BEARER_TOKEN` and `PROVIDER_ELIGIBILITY_TIMEOUT_MS`. For each authorizing account, the provider sends:
+
+```json
+{
+	"chain_id": "...",
+	"account": "alice",
+	"gates": ["subscriber"],
+	"actions": [{ "account": "examplegame", "name": "play" }]
+}
+```
+
+The service returns the requested gate keys the account may use:
+
+```json
+{ "eligible_gates": ["subscriber"] }
+```
+
+Unknown response gates are ignored. Timeouts, errors, malformed responses, and an unconfigured service deny gated buckets while preserving any matching ungated fallback. This keeps the resource-provider generic: operators may connect subscriptions, allowlists, loyalty programs, or other account policy systems without embedding those products in the provider.
+
 **Paid cosigning** (`ENABLE_PAID_TRANSACTIONS=true`, the default) appends a fee transfer to the cosigned transaction:
 
 | Setting                                      | Default                | Description                                       |

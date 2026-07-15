@@ -64,6 +64,13 @@
       "when": 1784080934338,
       "tag": "0008_futuristic_harry_osborn",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1784145758279,
+      "tag": "0009_lowly_maximus",
+      "breakpoints": true
     }
   ]
 }

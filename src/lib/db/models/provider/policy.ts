@@ -8,6 +8,7 @@ export interface BucketRow {
 	priority: number;
 	limit_ms: number;
 	limit_kb: number;
+	gate: string | null;
 }
 
 export interface RuleRow {
@@ -46,6 +47,14 @@ export class PolicyDatabase extends AbstractDatabase {
 				target: this.schema.providerBucket.name,
 				set: { priority, limit_ms, limit_kb }
 			})
+			.run();
+	}
+
+	setBucketGate(name: string, gate: string | null): void {
+		database
+			.update(this.schema.providerBucket)
+			.set({ gate })
+			.where(eq(this.schema.providerBucket.name, name))
 			.run();
 	}
 

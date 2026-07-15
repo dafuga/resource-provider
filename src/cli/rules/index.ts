@@ -68,12 +68,39 @@ function makeBucketCommand() {
 		});
 
 	bucket
+		.command('gate')
+		.addArgument(new Argument('<name>', 'Bucket name'))
+		.addArgument(new Argument('<gate>', 'External eligibility gate key'))
+		.description('Require an external eligibility grant for this bucket')
+		.action((name, gate) => {
+			if (!requireBucket(name)) return;
+			const normalized = String(gate).trim();
+			if (!normalized || /\s/.test(normalized)) {
+				generalLog.error('gate must be a non-empty key without whitespace');
+				return;
+			}
+			policyDatabase.setBucketGate(name, normalized);
+			generalLog.info(`Bucket ${name} gated by ${normalized}`);
+		});
+
+	bucket
+		.command('ungate')
+		.addArgument(new Argument('<name>', 'Bucket name'))
+		.description('Remove the external eligibility requirement from this bucket')
+		.action((name) => {
+			if (!requireBucket(name)) return;
+			policyDatabase.setBucketGate(name, null);
+			generalLog.info(`Bucket ${name} no longer requires external eligibility`);
+		});
+
+	bucket
 		.command('list')
 		.description('List buckets')
 		.action(() => {
 			for (const b of policyDatabase.listBuckets()) {
+				const gate = b.gate ? ` gate=${b.gate}` : '';
 				generalLog.info(
-					`${b.name}: priority=${b.priority} limit_ms=${b.limit_ms} limit_kb=${b.limit_kb}`
+					`${b.name}: priority=${b.priority} limit_ms=${b.limit_ms} limit_kb=${b.limit_kb}${gate}`
 				);
 			}
 		});
