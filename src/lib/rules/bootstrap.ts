@@ -1,5 +1,5 @@
-import { policyDatabase } from '$lib/db/models/provider/policy';
 import { configDatabase } from '$lib/db/models/config';
+import { policyDatabase } from '$lib/db/models/provider/policy';
 import { generalLog } from '$lib/logger';
 import { invalidatePolicyCache } from '$lib/rules';
 

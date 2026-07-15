@@ -1,5 +1,7 @@
 import { afterAll, describe, expect, it } from 'bun:test';
 
+import { configDatabase } from '$lib/db/models/config';
+import { policyDatabase } from '$lib/db/models/provider/policy';
 import {
 	actionMatches,
 	invalidatePolicyCache,
@@ -10,8 +12,6 @@ import {
 } from '$lib/rules';
 import type { Policy, PolicyRule } from '$lib/rules';
 import { bootstrapPolicy } from '$lib/rules/bootstrap';
-import { policyDatabase } from '$lib/db/models/provider/policy';
-import { configDatabase } from '$lib/db/models/config';
 
 const game: PolicyRule = {
 	name: 'game',

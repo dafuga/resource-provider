@@ -7,6 +7,7 @@ import { server } from '../provider';
 import { validateProviderAccount } from '../provider/validate';
 import { selfManagement } from '../self-management';
 
+import { makeConfigCommand } from './config';
 import { makeManagerAddCommand } from './manager/add';
 import { makeManagerListCommand } from './manager/list';
 import { makeManagerRemoveCommand } from './manager/remove';
@@ -14,16 +15,14 @@ import { makeManagerRunCommand } from './manager/run';
 import { makeManagerSetupCommand } from './manager/setup';
 import { makeManagerUnauthorizeCommand } from './manager/unauthorize';
 import { makeProviderSetupCommand } from './provider/setup';
-import { makeConfigCommand } from './config';
 import { makeRulesCommand } from './rules';
 
+import { policyDatabase } from '$lib/db/models/provider/policy';
 import { usageDatabase } from '$lib/db/models/provider/usage';
 import { createEnvironmentalFile } from '$lib/env';
-import { policyDatabase } from '$lib/db/models/provider/policy';
 import { bootstrapPolicy } from '$lib/rules/bootstrap';
 import { getInt, missingRequiredSettings } from '$lib/settings';
 import { warnRetiredEnvVars } from '$lib/settings/retired';
-
 import { ENABLE_FREE_TRANSACTIONS } from 'src/config';
 
 const services = ['all', 'api', 'manager'];

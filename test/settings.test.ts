@@ -1,12 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
+import { describeSetting } from '../src/cli/config';
+
 import { configDatabase } from '$lib/db/models/config';
-import {
-	getDefinition,
-	getDefinition as getDef,
-	parseSetting,
-	registry
-} from '$lib/settings/registry';
 import {
 	getBool,
 	getInt,
@@ -17,7 +13,12 @@ import {
 	setSetting,
 	unsetSetting
 } from '$lib/settings';
-import { describeSetting } from '../src/cli/config';
+import {
+	getDefinition,
+	getDefinition as getDef,
+	parseSetting,
+	registry
+} from '$lib/settings/registry';
 import { RETIRED_ENV_VARS } from '$lib/settings/retired';
 
 describe('configDatabase', () => {

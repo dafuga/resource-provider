@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 
+import { bucketInUse } from '../src/cli/rules';
+
 import { policyDatabase } from '$lib/db/models/provider/policy';
 import { usageDatabase } from '$lib/db/models/provider/usage';
-
-import { bucketInUse } from '../src/cli/rules';
 
 describe('policyDatabase buckets', () => {
 	it('puts and gets a bucket', () => {
