@@ -47,6 +47,9 @@ export const adminBuckets = new Elysia({ prefix: '/buckets' })
 		'/:name',
 		({ params, body }) => {
 			policyDatabase.putBucket(params.name, body.priority, body.limit_ms, body.limit_kb);
+			if (body.gate !== undefined) {
+				policyDatabase.setBucketGate(params.name, body.gate);
+			}
 			invalidatePolicyCache();
 			return { code: 200, message: `Bucket ${params.name} saved` };
 		},

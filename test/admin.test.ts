@@ -197,19 +197,22 @@ describe('admin bucket endpoints', () => {
 			priority: number;
 			limit_ms: number;
 			limit_kb: number;
+			gate: string | null;
 		}>;
 		expect(buckets.find((bucket) => bucket.name === 'wildcard')).toEqual({
 			name: 'wildcard',
 			priority: 1000,
 			limit_ms: 5,
-			limit_kb: 10
+			limit_kb: 10,
+			gate: null
 		});
 		const one = await app.handle(adminRequest('/buckets/wildcard', appToken));
 		expect(await one.json()).toEqual({
 			name: 'wildcard',
 			priority: 1000,
 			limit_ms: 5,
-			limit_kb: 10
+			limit_kb: 10,
+			gate: null
 		});
 	});
 	it('404s on unknown buckets', async () => {
@@ -225,7 +228,8 @@ describe('admin bucket endpoints', () => {
 				adminRequest('/buckets/test-bkt', appToken, 'PUT', {
 					priority: 10,
 					limit_ms: 50,
-					limit_kb: 50
+					limit_kb: 50,
+					gate: 'subscriber'
 				})
 			);
 			expect(put.status).toBe(200);
@@ -233,10 +237,28 @@ describe('admin bucket endpoints', () => {
 				name: 'test-bkt',
 				priority: 10,
 				limit_ms: 50,
-				limit_kb: 50
+				limit_kb: 50,
+				gate: 'subscriber'
 			});
 			const read = await app.handle(adminRequest('/buckets/test-bkt', appToken));
-			expect(((await read.json()) as { priority: number }).priority).toBe(10);
+			expect(await read.json()).toEqual({
+				name: 'test-bkt',
+				priority: 10,
+				limit_ms: 50,
+				limit_kb: 50,
+				gate: 'subscriber'
+			});
+
+			const clear = await app.handle(
+				adminRequest('/buckets/test-bkt', appToken, 'PUT', {
+					priority: 10,
+					limit_ms: 50,
+					limit_kb: 50,
+					gate: null
+				})
+			);
+			expect(clear.status).toBe(200);
+			expect(policyDatabase.getBucket('test-bkt')?.gate).toBeNull();
 		} finally {
 			policyDatabase.removeBucket('test-bkt');
 			invalidatePolicyCache();
@@ -253,6 +275,18 @@ describe('admin bucket endpoints', () => {
 		expect(put.status).toBe(422);
 		expect(await put.json()).toEqual({ code: 422, message: expect.any(String) });
 		expect(policyDatabase.getBucket('test-bad')).toBeUndefined();
+	});
+	it('rejects invalid eligibility gate keys via schema', async () => {
+		const put = await app.handle(
+			adminRequest('/buckets/test-bad-gate', appToken, 'PUT', {
+				priority: 10,
+				limit_ms: 50,
+				limit_kb: 50,
+				gate: 'not a key'
+			})
+		);
+		expect(put.status).toBe(422);
+		expect(policyDatabase.getBucket('test-bad-gate')).toBeUndefined();
 	});
 	it('409s deleting a bucket referenced by a rule', async () => {
 		const account = 'test-admin-bucket-409';
@@ -286,7 +320,8 @@ describe('admin bucket endpoints', () => {
 				name: 'test-gone',
 				priority: 50,
 				limit_ms: 10,
-				limit_kb: 10
+				limit_kb: 10,
+				gate: null
 			});
 
 			const response = await app.handle(adminRequest('/buckets/test-gone', appToken, 'DELETE'));

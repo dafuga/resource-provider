@@ -50,6 +50,20 @@ export const ENABLE_RESOURCE_PROVIDER = isENVTrue(process.env.ENABLE_RESOURCE_PR
 export const PROVIDER_ACCOUNT_NAME = process.env.PROVIDER_ACCOUNT_NAME;
 export const PROVIDER_ACCOUNT_PERMISSION = process.env.PROVIDER_ACCOUNT_PERMISSION;
 export const PROVIDER_ACCOUNT_PRIVATEKEY = process.env.PROVIDER_ACCOUNT_PRIVATEKEY;
+export const PROVIDER_ELIGIBILITY_URL = process.env.PROVIDER_ELIGIBILITY_URL;
+export const PROVIDER_ELIGIBILITY_BEARER_TOKEN = process.env.PROVIDER_ELIGIBILITY_BEARER_TOKEN;
+
+if (PROVIDER_ELIGIBILITY_URL) {
+	let eligibilityUrl: URL;
+	try {
+		eligibilityUrl = new URL(PROVIDER_ELIGIBILITY_URL);
+	} catch {
+		throw new Error('PROVIDER_ELIGIBILITY_URL must be a valid HTTP or HTTPS URL.');
+	}
+	if (!['http:', 'https:'].includes(eligibilityUrl.protocol)) {
+		throw new Error('PROVIDER_ELIGIBILITY_URL must be a valid HTTP or HTTPS URL.');
+	}
+}
 
 if (ENABLE_RESOURCE_PROVIDER) {
 	if (!PROVIDER_ACCOUNT_NAME) {

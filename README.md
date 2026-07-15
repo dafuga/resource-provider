@@ -186,6 +186,30 @@ A transaction matches a rule when every action is covered by an `allow`/`require
 
 Upgrading from the previous single-limit version: on first start, the old `provider.free_transactions.limit_ms/kb` values are seeded automatically into a `wildcard` bucket.
 
+#### External bucket eligibility
+
+The authenticated bucket admin API accepts an optional `gate` key. A gated bucket is available only
+when the service configured by `PROVIDER_ELIGIBILITY_URL` approves that key for every authorizing
+account. Rules and resource limits remain local, and ungated fallback buckets remain available.
+`PROVIDER_ELIGIBILITY_BEARER_TOKEN` optionally authenticates the request.
+
+```json
+{
+	"chain_id": "...",
+	"account": "alice",
+	"gates": ["subscriber"]
+}
+```
+
+The service returns the requested gate keys the account may use:
+
+```json
+{ "eligible_gates": ["subscriber"] }
+```
+
+Unknown gates, timeouts, errors, and malformed responses deny gated buckets. Sending `null` through
+the admin API removes a gate; omitting it preserves the current value.
+
 **Paid cosigning** (`ENABLE_PAID_TRANSACTIONS=true`, the default) appends a fee transfer to the cosigned transaction:
 
 | Setting                                      | Default                | Description                                       |

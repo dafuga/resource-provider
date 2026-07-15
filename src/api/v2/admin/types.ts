@@ -57,7 +57,8 @@ export const adminBucket = t.Object(
 		name: t.String(),
 		priority: t.Integer({ minimum: 0 }),
 		limit_ms: t.Integer({ minimum: 1 }),
-		limit_kb: t.Integer({ minimum: 1 })
+		limit_kb: t.Integer({ minimum: 1 }),
+		gate: t.Union([t.String(), t.Null()])
 	},
 	closed
 );
@@ -66,7 +67,8 @@ export const adminBucketBody = t.Object(
 	{
 		priority: t.Integer({ minimum: 0 }),
 		limit_ms: t.Integer({ minimum: 1 }),
-		limit_kb: t.Integer({ minimum: 1 })
+		limit_kb: t.Integer({ minimum: 1 }),
+		gate: t.Optional(t.Union([t.String({ minLength: 1, pattern: '^\\S+$' }), t.Null()]))
 	},
 	closed
 );

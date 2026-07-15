@@ -6,8 +6,10 @@ import type { Static } from 'elysia';
 import { v1ProviderRequestBody } from '$api/v1/types';
 import type { v1ResponseTypes } from '$api/v1/types';
 import { usageDatabase } from '$lib/db/models/provider/usage';
+import { getRequiredGates, requestEligibleGates } from '$lib/eligibility';
 import { providerLog } from '$lib/logger';
-import { loadPolicy, resolveFreeGrant } from '$lib/rules';
+import { loadPolicy, resolveCandidateBuckets, resolveFreeGrant } from '$lib/rules';
+import type { MatchAction, Policy, PolicyBucket } from '$lib/rules';
 import { getString } from '$lib/settings';
 import { addFeeAction } from '$lib/wharf/actions/fee';
 import { addNoopAction } from '$lib/wharf/actions/noop';
@@ -24,9 +26,12 @@ import {
 	validateRequester
 } from '$lib/wharf/validation';
 import {
+	ANTELOPE_CHAIN_ID,
 	ANTELOPE_SYSTEM_TOKEN,
 	ENABLE_FREE_TRANSACTIONS,
-	ENABLE_PAID_TRANSACTIONS
+	ENABLE_PAID_TRANSACTIONS,
+	PROVIDER_ELIGIBILITY_BEARER_TOKEN,
+	PROVIDER_ELIGIBILITY_URL
 } from 'src/config';
 
 function validateRequest(cosigner: PermissionLevel, request: SigningRequest): void {
@@ -46,6 +51,59 @@ function validateRequest(cosigner: PermissionLevel, request: SigningRequest): vo
 	if (actions.some((action) => action.authorization.length === 0)) {
 		throw new Error('Actions must contain at least one authorization.');
 	}
+}
+
+async function resolveAccountEligibility(
+	policy: Policy,
+	actions: MatchAction[],
+	billed: string[]
+): Promise<Map<string, Set<string>>> {
+	const gates = getRequiredGates(resolveCandidateBuckets(policy, actions));
+	const eligibleByAccount = new Map<string, Set<string>>();
+	if (gates.length === 0) {
+		return eligibleByAccount;
+	}
+	if (!PROVIDER_ELIGIBILITY_URL) {
+		providerLog.warn('Gated buckets matched but no eligibility service is configured', { gates });
+		return eligibleByAccount;
+	}
+
+	await Promise.all(
+		billed.map(async (account) => {
+			try {
+				eligibleByAccount.set(
+					account,
+					await requestEligibleGates(
+						{
+							chain_id: ANTELOPE_CHAIN_ID ?? '',
+							account,
+							gates
+						},
+						{
+							url: PROVIDER_ELIGIBILITY_URL,
+							bearerToken: PROVIDER_ELIGIBILITY_BEARER_TOKEN
+						}
+					)
+				);
+			} catch (error) {
+				providerLog.warn('Unable to resolve external bucket eligibility', {
+					account,
+					gates,
+					error: String(error)
+				});
+				eligibleByAccount.set(account, new Set());
+			}
+		})
+	);
+	return eligibleByAccount;
+}
+
+function accountCanUseBucket(
+	eligibleByAccount: Map<string, Set<string>>,
+	account: string,
+	bucket: PolicyBucket
+): boolean {
+	return !bucket.gate || Boolean(eligibleByAccount.get(account)?.has(bucket.gate));
 }
 
 async function processRequest(
@@ -93,13 +151,18 @@ async function processRequest(
 		transaction = await addBuyRAMBytesAction(transaction, requester, ramBytes);
 	}
 
-	const grant = ENABLE_FREE_TRANSACTIONS
+	const policy = ENABLE_FREE_TRANSACTIONS ? loadPolicy() : null;
+	const eligibleByAccount = policy
+		? await resolveAccountEligibility(policy, matchActions, billed)
+		: new Map<string, Set<string>>();
+	const grant = policy
 		? resolveFreeGrant(
-				loadPolicy(),
+				policy,
 				matchActions,
 				{ cpu: resourceNeeds.cpu, net: resourceNeeds.net },
 				billed,
-				(account, bucket) => usageDatabase.getBucketUsage(account, bucket)
+				(account, bucket) => usageDatabase.getBucketUsage(account, bucket),
+				(account, bucket) => accountCanUseBucket(eligibleByAccount, account, bucket)
 			)
 		: null;
 

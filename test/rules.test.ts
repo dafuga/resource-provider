@@ -109,6 +109,33 @@ describe('resolveFreeGrant', () => {
 		const grant = resolveFreeGrant(policy, actions, needs, ['bob'], usage);
 		expect(grant).toEqual([{ account: 'bob', bucket: 'wildcard' }]);
 	});
+	it('skips a gated bucket unless the account has the matching external eligibility', () => {
+		const gatedPolicy: Policy = {
+			...policy,
+			buckets: policy.buckets.map((bucket) =>
+				bucket.name === 'shipload' ? { ...bucket, gate: 'subscriber' } : bucket
+			)
+		};
+		const denied = resolveFreeGrant(
+			gatedPolicy,
+			actions,
+			needs,
+			['alice'],
+			() => ({ cpu: 0, net: 0 }),
+			(_account, bucket) => !bucket.gate
+		);
+		expect(denied).toEqual([{ account: 'alice', bucket: 'wildcard' }]);
+
+		const allowed = resolveFreeGrant(
+			gatedPolicy,
+			actions,
+			needs,
+			['alice'],
+			() => ({ cpu: 0, net: 0 }),
+			(_account, bucket) => !bucket.gate || bucket.gate === 'subscriber'
+		);
+		expect(allowed).toEqual([{ account: 'alice', bucket: 'shipload' }]);
+	});
 	it('lets different authorizers land in different buckets', () => {
 		const usage = (account: string, bucket: string) =>
 			account === 'bob' && bucket === 'shipload'
@@ -164,7 +191,8 @@ describe('bootstrapPolicy', () => {
 			name: 'wildcard',
 			priority: 1000,
 			limit_ms: 7,
-			limit_kb: 11
+			limit_kb: 11,
+			gate: null
 		});
 		expect(policyDatabase.listPatterns('wildcard')).toContainEqual({
 			rule: 'wildcard',
