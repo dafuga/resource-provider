@@ -221,7 +221,7 @@ The service returns the requested gate keys the account may use:
 
 Unknown response gates are ignored. Timeouts, errors, malformed responses, and an unconfigured service deny gated buckets while preserving any matching ungated fallback. This keeps the resource-provider generic: operators may connect subscriptions, allowlists, loyalty programs, or other account policy systems without embedding those products in the provider.
 
-For RNG Frontier Game Pass, run the provider with `ENABLE_FREE_TRANSACTIONS=true`, `ENABLE_PAID_TRANSACTIONS=false`, and `PROVIDER_REQUIRE_RESOURCE_NEED=true`. Point `PROVIDER_ELIGIBILITY_URL` at Frontier's `/api/resources/eligibility` endpoint, remove the wildcard rule/bucket, and configure one gated bucket containing only the normal game actions:
+For RNG Frontier Game Pass, run the provider with `ENABLE_FREE_TRANSACTIONS=true` and `ENABLE_PAID_TRANSACTIONS=false`, then enable resource-need detection with `rpcli config set provider.require_resource_need true`. Point `PROVIDER_ELIGIBILITY_URL` at Frontier's `/api/resources/eligibility` endpoint, remove the wildcard rule/bucket, and configure one gated bucket containing only the normal game actions:
 
 ```bash
 rpcli rules bucket add rng-game-pass 10 60000 5000
