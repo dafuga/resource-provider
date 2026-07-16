@@ -227,6 +227,9 @@ the admin API removes a gate; omitting it preserves the current value.
 | `provider.min_cpu_us`            | 50000   | CPU (µs) below which an account is "in need"    |
 | `provider.min_net_bytes`         | 50000   | NET (bytes) below which an account is "in need" |
 
+The normal request endpoint only cosigns transactions; it does not PowerUp requester accounts. If
+a transaction needs RAM, the appended `buyrambytes` action is authorized and paid by the requester.
+
 **Free powerups** (`ENABLE_FREE_POWERUP=true`) require `provider.free_powerup.ms`, `provider.free_powerup.kb`, `provider.free_powerup.uses`, and `provider.free_powerup.max_payment`.
 
 See `.env.example` for the remaining environment options, such as the light account cosigning feature (`ENABLE_LIGHTACCOUNT_PROVIDER`).

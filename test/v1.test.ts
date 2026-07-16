@@ -1,9 +1,12 @@
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import type { API } from '@wharfkit/antelope';
+import { Int64 } from '@wharfkit/antelope';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
 import type { Elysia } from 'elysia';
 
 import { server } from '../src/provider';
 
 import { setSetting, unsetSetting } from '$lib/settings';
+import { checkResourceSufficiency } from '$lib/wharf/validation';
 import { PROVIDER_ACCOUNT_NAME, PROVIDER_ACCOUNT_PERMISSION } from 'src/config';
 
 const mockRequest =
@@ -21,6 +24,30 @@ const mockRequestPayload = {
 	request: mockRequest
 };
 
+const transactionAuthorizedByAnotherAccount = {
+	expiration: '2026-07-16T22:00:00',
+	ref_block_num: 0,
+	ref_block_prefix: 0,
+	max_net_usage_words: 0,
+	max_cpu_usage_ms: 0,
+	delay_sec: 0,
+	context_free_actions: [],
+	actions: [
+		{
+			account: 'eosio.token',
+			name: 'transfer',
+			authorization: [{ actor: 'different111', permission: 'active' }],
+			data: {
+				from: 'different111',
+				to: 'wharfkit1111',
+				quantity: '0.0001 EOS',
+				memo: ''
+			}
+		}
+	],
+	transaction_extensions: []
+};
+
 let app: Elysia;
 
 function makeRequest(path: string, data: unknown) {
@@ -29,6 +56,13 @@ function makeRequest(path: string, data: unknown) {
 		body: JSON.stringify(data),
 		headers: { 'Content-Type': 'application/json' }
 	});
+}
+
+function accountWithAvailableResources(cpu: number, net: number): API.v1.AccountObject {
+	return {
+		cpu_limit: { max: Int64.from(cpu), current_used: Int64.from(0) },
+		net_limit: { max: Int64.from(net), current_used: Int64.from(0) }
+	} as API.v1.AccountObject;
 }
 
 describe('v1/resource_provider/request_transaction', () => {
@@ -143,11 +177,62 @@ describe('v1/resource_provider/request_transaction', () => {
 			expect(response.ok).toBeFalse();
 		});
 	});
+	describe('resource need validation', () => {
+		afterEach(() => {
+			setSetting('provider.require_resource_need', 'false');
+			unsetSetting('provider.min_cpu_us');
+			unsetSetting('provider.min_net_bytes');
+		});
+
+		it('rejects cosigning when the requester already meets both resource thresholds', () => {
+			setSetting('provider.require_resource_need', 'true');
+			setSetting('provider.min_cpu_us', '50000');
+			setSetting('provider.min_net_bytes', '50000');
+
+			expect(() => checkResourceSufficiency(accountWithAvailableResources(50000, 50000))).toThrow(
+				'Network resources not required by this account.'
+			);
+		});
+
+		it('allows cosigning when either CPU or NET is below its threshold', () => {
+			setSetting('provider.require_resource_need', 'true');
+			setSetting('provider.min_cpu_us', '50000');
+			setSetting('provider.min_net_bytes', '50000');
+
+			expect(() =>
+				checkResourceSufficiency(accountWithAvailableResources(49999, 50000))
+			).not.toThrow();
+			expect(() =>
+				checkResourceSufficiency(accountWithAvailableResources(50000, 49999))
+			).not.toThrow();
+		});
+
+		it("checks the requester's resources rather than another action authorizer", async () => {
+			setSetting('provider.require_resource_need', 'true');
+			const request = makeRequest('/v1/resource_provider/request_transaction', {
+				signer: mockSigner,
+				transaction: transactionAuthorizedByAnotherAccount
+			});
+
+			const response = await app.handle(request);
+			const body = (await response.json()) as { message: string };
+
+			expect(response.ok).toBeFalse();
+			expect(body.message).toContain('Network resources not required by this account.');
+		});
+	});
 	describe('appends cosigner noop', () => {
-		it('appends noop action to request', async () => {
+		it('appends a noop without adding a PowerUp action', async () => {
 			const request = makeRequest('/v1/resource_provider/request_transaction', mockRequestPayload);
 			const response = await app.handle(request);
+			const body = (await response.json()) as {
+				data: { request: [string, { actions: Array<{ account: string; name: string }> }] };
+			};
+			const actions = body.data.request[1].actions;
+
 			expect(response.ok).toBeTrue();
+			expect(actions[0]).toMatchObject({ account: 'greymassnoop', name: 'noop' });
+			expect(actions.some((action) => action.name === 'powerup')).toBeFalse();
 		});
 	});
 	it('reports usage per bucket', async () => {

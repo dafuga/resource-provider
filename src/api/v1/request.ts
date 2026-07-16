@@ -119,7 +119,9 @@ async function processRequest(
 	if (userActions.length === 0 || userActions[0].authorization.length === 0) {
 		throw new Error('Transaction has no billable actions.');
 	}
-	const sufficiencySubject = userActions[0].authorization[0].actor;
+	// Resource sponsorship is requested for the signer. Checking an action authorizer instead
+	// would allow a resource-sufficient signer to nominate another account for this check.
+	const sufficiencySubject = requester.actor;
 
 	let accountData: API.v1.AccountObject;
 	try {
@@ -172,10 +174,10 @@ async function processRequest(
 		for (const { account, bucket } of grant) {
 			await usageDatabase.incrementUsage(account, resourceNeeds.cpu, resourceNeeds.net, bucket);
 		}
-		providerLog.info('Provided resources (free)', {
+		providerLog.info('Cosigned transaction (free)', {
 			account: String(requester.actor),
-			cpu: resourceNeeds.cpu,
-			net: resourceNeeds.net,
+			estimatedCpu: resourceNeeds.cpu,
+			estimatedNet: resourceNeeds.net,
 			buckets: grant
 		});
 		return {
@@ -220,10 +222,10 @@ async function processRequest(
 
 	const providerSignature = await signTransaction(transaction);
 
-	providerLog.info('Provided resources (paid)', {
+	providerLog.info('Cosigned transaction (paid)', {
 		account: String(requester.actor),
-		cpu: resourceNeeds.cpu,
-		net: resourceNeeds.net,
+		estimatedCpu: resourceNeeds.cpu,
+		estimatedNet: resourceNeeds.net,
 		fee: String(providerFee)
 	});
 	return {

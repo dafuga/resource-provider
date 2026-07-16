@@ -29,8 +29,8 @@ export function checkResourceSufficiency(accountData: API.v1.AccountObject): voi
 	);
 
 	if (
-		cpuAvailable > getInt('provider.min_cpu_us') &&
-		netAvailable > getInt('provider.min_net_bytes')
+		cpuAvailable >= getInt('provider.min_cpu_us') &&
+		netAvailable >= getInt('provider.min_net_bytes')
 	) {
 		throw new Error('Network resources not required by this account.');
 	}
