@@ -85,7 +85,13 @@ if (ENABLE_FREE_TRANSACTIONS) {
 export const PROVIDER_USAGE_CLEANUP_CRON = process.env.PROVIDER_USAGE_CLEANUP_CRON ?? '0 * * * *';
 
 // Feature: Resource Provider API - Cosign transactions to fee-based resources
-export const ENABLE_PAID_TRANSACTIONS = isENVTrue(process.env.ENABLE_PAID_TRANSACTIONS ?? 'true');
+export function defaultPaidTransactions(resourceProviderEnabled: boolean): boolean {
+	return resourceProviderEnabled;
+}
+
+export const ENABLE_PAID_TRANSACTIONS = isENVTrue(
+	process.env.ENABLE_PAID_TRANSACTIONS ?? String(defaultPaidTransactions(ENABLE_RESOURCE_PROVIDER))
+);
 
 if (ENABLE_PAID_TRANSACTIONS) {
 	if (!ENABLE_RESOURCE_PROVIDER) {
@@ -126,6 +132,8 @@ if (ENABLE_LIGHTACCOUNT_PROVIDER) {
 		);
 	}
 }
+
+export const ENABLE_ADMIN_API = isENVTrue(process.env.ENABLE_ADMIN_API ?? 'false');
 
 if (
 	ENABLE_RESOURCE_PROVIDER &&

@@ -4,6 +4,8 @@ import { describeSetting } from '../src/cli/config';
 
 import { configDatabase } from '$lib/db/models/config';
 import {
+	applySettingsBatch,
+	describeSettings,
 	getBool,
 	getInt,
 	getSetting,
@@ -48,6 +50,21 @@ describe('configDatabase', () => {
 		configDatabase.set('test.scoped', 'c', 'contract:example');
 		expect(configDatabase.get('test.scoped')?.value).toBe('g');
 		expect(configDatabase.get('test.scoped', 'contract:example')?.value).toBe('c');
+	});
+	it('rolls back a batch when a later database write fails', () => {
+		const firstKey = 'test.atomic-first';
+		configDatabase.unset(firstKey);
+		try {
+			expect(() =>
+				configDatabase.applyBatch([
+					{ key: firstKey, value: 'written-before-failure' },
+					{ key: null as unknown as string, value: 'invalid' }
+				])
+			).toThrow();
+			expect(configDatabase.get(firstKey)).toBeUndefined();
+		} finally {
+			configDatabase.unset(firstKey);
+		}
 	});
 });
 
@@ -158,5 +175,53 @@ describe('retired env vars', () => {
 		expect(RETIRED_ENV_VARS).toContain('PROVIDER_USAGE_WINDOW_HOURS');
 		expect(RETIRED_ENV_VARS).toContain('PROVIDER_FREE_POWERUP_MAX_PAYMENT');
 		expect(RETIRED_ENV_VARS.length).toBe(14);
+	});
+});
+
+describe('settings batch', () => {
+	it('applies a valid batch atomically', () => {
+		try {
+			const errors = applySettingsBatch({
+				'provider.min_cpu_us': '61000',
+				'provider.min_net_bytes': '62000'
+			});
+			expect(errors).toEqual([]);
+			expect(getInt('provider.min_cpu_us')).toBe(61000);
+			expect(getInt('provider.min_net_bytes')).toBe(62000);
+		} finally {
+			expect(
+				applySettingsBatch({ 'provider.min_cpu_us': null, 'provider.min_net_bytes': null })
+			).toEqual([]);
+		}
+	});
+	it('applies nothing when any entry is invalid', () => {
+		const errors = applySettingsBatch({
+			'provider.min_cpu_us': '63000',
+			'provider.bogus': '1',
+			'provider.usage.window_hours': '-5'
+		});
+		expect(errors.length).toBe(2);
+		expect(errors.map((e) => e.key).sort()).toEqual([
+			'provider.bogus',
+			'provider.usage.window_hours'
+		]);
+		expect(getInt('provider.min_cpu_us')).toBe(50000);
+	});
+	it('unsets via null', () => {
+		try {
+			expect(applySettingsBatch({ 'provider.min_cpu_us': '64000' })).toEqual([]);
+			const errors = applySettingsBatch({ 'provider.min_cpu_us': null });
+			expect(errors).toEqual([]);
+			expect(getInt('provider.min_cpu_us')).toBe(50000);
+		} finally {
+			expect(applySettingsBatch({ 'provider.min_cpu_us': null })).toEqual([]);
+		}
+	});
+	it('describes the full registry with values and set flags', () => {
+		const rows = describeSettings();
+		expect(rows.length).toBe(registry.length);
+		const window = rows.find((r) => r.key === 'provider.usage.window_hours')!;
+		expect(window.value).toBe('24');
+		expect(window.set).toBeFalse();
 	});
 });

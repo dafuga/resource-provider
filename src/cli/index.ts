@@ -1,6 +1,7 @@
 import { Argument, Command } from 'commander';
 
 import { version } from '../../package.json';
+import { adminServer } from '../admin';
 import { generalLog } from '../lib/logger';
 import { manager } from '../manager';
 import { server } from '../provider';
@@ -16,6 +17,7 @@ import { makeManagerSetupCommand } from './manager/setup';
 import { makeManagerUnauthorizeCommand } from './manager/unauthorize';
 import { makeProviderSetupCommand } from './provider/setup';
 import { makeRulesCommand } from './rules';
+import { makeTokenCommand } from './token';
 
 import { policyDatabase } from '$lib/db/models/provider/policy';
 import { usageDatabase } from '$lib/db/models/provider/usage';
@@ -23,7 +25,7 @@ import { createEnvironmentalFile } from '$lib/env';
 import { bootstrapPolicy } from '$lib/rules/bootstrap';
 import { getInt, missingRequiredSettings } from '$lib/settings';
 import { warnRetiredEnvVars } from '$lib/settings/retired';
-import { ENABLE_FREE_TRANSACTIONS } from 'src/config';
+import { ENABLE_FREE_TRANSACTIONS, ENABLE_RESOURCE_PROVIDER } from 'src/config';
 
 const services = ['all', 'api', 'manager'];
 
@@ -37,6 +39,7 @@ export function prompt() {
 	program.commandsGroup('Configuration');
 	program.addCommand(makeConfigCommand());
 	program.addCommand(makeRulesCommand());
+	program.addCommand(makeTokenCommand());
 	const env = program.command('env').description('Manage the .env configuration file');
 	env
 		.command('init')
@@ -55,7 +58,7 @@ export function prompt() {
 		.description('Run one or more resource provider services (e.g. all, api, manager)')
 		.action(async (service) => {
 			warnRetiredEnvVars();
-			if (service === 'all' || service === 'api') {
+			if ((service === 'all' || service === 'api') && ENABLE_RESOURCE_PROVIDER) {
 				const missing = missingRequiredSettings();
 				if (missing.length > 0) {
 					for (const def of missing) {
@@ -81,6 +84,7 @@ export function prompt() {
 			if (service === 'all' || service === 'manager') {
 				manager();
 			}
+			adminServer();
 			selfManagement();
 		});
 

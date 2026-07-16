@@ -69,3 +69,11 @@ export const providerRulePattern = sqliteTable(
 	},
 	(table) => [primaryKey({ columns: [table.rule, table.kind, table.pattern] })]
 );
+
+export const tokens = sqliteTable('tokens', {
+	name: text('name').primaryKey(),
+	hash: text('hash').notNull().unique(),
+	level: text('level').notNull(),
+	created_at: integer('created_at').notNull(),
+	last_used_at: integer('last_used_at')
+});

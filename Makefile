@@ -104,4 +104,4 @@ clean/node_modules:
 
 .PHONY: clean/testdb
 clean/testdb:
-	rm -f src/lib/testing.sqlite
+	rm -f testing.sqlite
