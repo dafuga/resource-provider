@@ -9,7 +9,13 @@ describe('policyDatabase buckets', () => {
 	it('puts and gets a bucket', () => {
 		policyDatabase.putBucket('t_ship', 10, 100, 100);
 		const b = policyDatabase.getBucket('t_ship');
-		expect(b).toEqual({ name: 't_ship', priority: 10, limit_ms: 100, limit_kb: 100 });
+		expect(b).toEqual({
+			name: 't_ship',
+			priority: 10,
+			limit_ms: 100,
+			limit_kb: 100,
+			members_only: false
+		});
 	});
 	it('upserts a bucket', () => {
 		policyDatabase.putBucket('t_ship', 10, 100, 100);
@@ -18,8 +24,20 @@ describe('policyDatabase buckets', () => {
 			name: 't_ship',
 			priority: 5,
 			limit_ms: 200,
-			limit_kb: 200
+			limit_kb: 200,
+			members_only: false
 		});
+	});
+	it('restricts a bucket to explicitly managed members', () => {
+		policyDatabase.putBucket('t_members', 10, 100, 100, true);
+		policyDatabase.putBucket('t_members', 5, 200, 200);
+		expect(policyDatabase.getBucket('t_members')?.members_only).toBeTrue();
+
+		policyDatabase.addBucketMember('t_members', 'alice');
+		policyDatabase.addBucketMember('t_members', 'alice');
+		expect(policyDatabase.isBucketMember('t_members', 'alice')).toBeTrue();
+		policyDatabase.removeBucketMember('t_members', 'alice');
+		expect(policyDatabase.isBucketMember('t_members', 'alice')).toBeFalse();
 	});
 	it('lists buckets ordered by priority then name', () => {
 		policyDatabase.putBucket('t_a', 1000, 20, 20);
@@ -29,8 +47,10 @@ describe('policyDatabase buckets', () => {
 	});
 	it('removes a bucket', () => {
 		policyDatabase.putBucket('t_gone', 1, 1, 1);
+		policyDatabase.addBucketMember('t_gone', 'alice');
 		policyDatabase.removeBucket('t_gone');
 		expect(policyDatabase.getBucket('t_gone')).toBeUndefined();
+		expect(policyDatabase.isBucketMember('t_gone', 'alice')).toBeFalse();
 	});
 });
 

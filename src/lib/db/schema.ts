@@ -52,8 +52,18 @@ export const providerBucket = sqliteTable('provider_bucket', {
 	name: text('name').primaryKey(),
 	priority: integer('priority').notNull(),
 	limit_ms: integer('limit_ms').notNull(),
-	limit_kb: integer('limit_kb').notNull()
+	limit_kb: integer('limit_kb').notNull(),
+	members_only: integer('members_only', { mode: 'boolean' }).notNull().default(false)
 });
+
+export const providerBucketMember = sqliteTable(
+	'provider_bucket_member',
+	{
+		bucket: text('bucket').notNull(),
+		account: text('account').notNull()
+	},
+	(table) => [primaryKey({ columns: [table.bucket, table.account] })]
+);
 
 export const providerRule = sqliteTable('provider_rule', {
 	name: text('name').primaryKey(),

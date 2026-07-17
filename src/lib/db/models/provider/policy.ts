@@ -8,6 +8,7 @@ export interface BucketRow {
 	priority: number;
 	limit_ms: number;
 	limit_kb: number;
+	members_only: boolean;
 }
 
 export interface RuleRow {
@@ -38,22 +39,70 @@ export class PolicyDatabase extends AbstractDatabase {
 			.get();
 	}
 
-	putBucket(name: string, priority: number, limit_ms: number, limit_kb: number): void {
+	putBucket(
+		name: string,
+		priority: number,
+		limit_ms: number,
+		limit_kb: number,
+		members_only?: boolean
+	): void {
+		const restricted = members_only ?? this.getBucket(name)?.members_only ?? false;
 		database
 			.insert(this.schema.providerBucket)
-			.values({ name, priority, limit_ms, limit_kb })
+			.values({ name, priority, limit_ms, limit_kb, members_only: restricted })
 			.onConflictDoUpdate({
 				target: this.schema.providerBucket.name,
-				set: { priority, limit_ms, limit_kb }
+				set: { priority, limit_ms, limit_kb, members_only: restricted }
 			})
 			.run();
 	}
 
 	removeBucket(name: string): void {
+		database.transaction((transaction) => {
+			transaction
+				.delete(this.schema.providerBucketMember)
+				.where(eq(this.schema.providerBucketMember.bucket, name))
+				.run();
+			transaction
+				.delete(this.schema.providerBucket)
+				.where(eq(this.schema.providerBucket.name, name))
+				.run();
+		});
+	}
+
+	addBucketMember(bucket: string, account: string): void {
 		database
-			.delete(this.schema.providerBucket)
-			.where(eq(this.schema.providerBucket.name, name))
+			.insert(this.schema.providerBucketMember)
+			.values({ bucket, account })
+			.onConflictDoNothing()
 			.run();
+	}
+
+	removeBucketMember(bucket: string, account: string): void {
+		database
+			.delete(this.schema.providerBucketMember)
+			.where(
+				and(
+					eq(this.schema.providerBucketMember.bucket, bucket),
+					eq(this.schema.providerBucketMember.account, account)
+				)
+			)
+			.run();
+	}
+
+	isBucketMember(bucket: string, account: string): boolean {
+		return Boolean(
+			database
+				.select({ account: this.schema.providerBucketMember.account })
+				.from(this.schema.providerBucketMember)
+				.where(
+					and(
+						eq(this.schema.providerBucketMember.bucket, bucket),
+						eq(this.schema.providerBucketMember.account, account)
+					)
+				)
+				.get()
+		);
 	}
 
 	listRules(): RuleRow[] {

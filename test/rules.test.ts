@@ -29,8 +29,8 @@ const wild: PolicyRule = { name: 'wildcard', bucket: 'wildcard', allow: ['*::*']
 
 const policy: Policy = {
 	buckets: [
-		{ name: 'shipload', priority: 10, limit_ms: 100, limit_kb: 100 },
-		{ name: 'wildcard', priority: 1000, limit_ms: 20, limit_kb: 20 }
+		{ name: 'shipload', priority: 10, limit_ms: 100, limit_kb: 100, members_only: false },
+		{ name: 'wildcard', priority: 1000, limit_ms: 20, limit_kb: 20, members_only: false }
 	],
 	rules: [game, place, wild]
 };
@@ -109,6 +109,21 @@ describe('resolveFreeGrant', () => {
 		const grant = resolveFreeGrant(policy, actions, needs, ['bob'], usage);
 		expect(grant).toEqual([{ account: 'bob', bucket: 'wildcard' }]);
 	});
+	it('skips a members-only bucket for non-members', () => {
+		const restricted: Policy = {
+			...policy,
+			buckets: policy.buckets.map((bucket) =>
+				bucket.name === 'shipload' ? { ...bucket, members_only: true } : bucket
+			)
+		};
+		const usage = () => ({ cpu: 0, net: 0 });
+		expect(resolveFreeGrant(restricted, actions, needs, ['alice'], usage)).toEqual([
+			{ account: 'alice', bucket: 'wildcard' }
+		]);
+		expect(resolveFreeGrant(restricted, actions, needs, ['alice'], usage, () => true)).toEqual([
+			{ account: 'alice', bucket: 'shipload' }
+		]);
+	});
 	it('lets different authorizers land in different buckets', () => {
 		const usage = (account: string, bucket: string) =>
 			account === 'bob' && bucket === 'shipload'
@@ -164,7 +179,8 @@ describe('bootstrapPolicy', () => {
 			name: 'wildcard',
 			priority: 1000,
 			limit_ms: 7,
-			limit_kb: 11
+			limit_kb: 11,
+			members_only: false
 		});
 		expect(policyDatabase.listPatterns('wildcard')).toContainEqual({
 			rule: 'wildcard',

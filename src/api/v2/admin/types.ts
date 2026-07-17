@@ -24,6 +24,13 @@ export const adminPlatformResponses = { 401: adminUnauthorized, 403: adminForbid
 
 export const adminNameParams = t.Object({ name: t.String() }, closed);
 export const adminAccountParams = t.Object({ account: t.String() }, closed);
+export const adminBucketMemberParams = t.Object(
+	{
+		name: t.String(),
+		account: t.String({ pattern: '^[a-z1-5.]{1,12}$' })
+	},
+	closed
+);
 
 export const adminTokenInfo = t.Object(
 	{
@@ -57,7 +64,8 @@ export const adminBucket = t.Object(
 		name: t.String(),
 		priority: t.Integer({ minimum: 0 }),
 		limit_ms: t.Integer({ minimum: 1 }),
-		limit_kb: t.Integer({ minimum: 1 })
+		limit_kb: t.Integer({ minimum: 1 }),
+		members_only: t.Boolean()
 	},
 	closed
 );
@@ -66,7 +74,8 @@ export const adminBucketBody = t.Object(
 	{
 		priority: t.Integer({ minimum: 0 }),
 		limit_ms: t.Integer({ minimum: 1 }),
-		limit_kb: t.Integer({ minimum: 1 })
+		limit_kb: t.Integer({ minimum: 1 }),
+		members_only: t.Optional(t.Boolean())
 	},
 	closed
 );

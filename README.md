@@ -184,6 +184,8 @@ Free cosigning routes each transaction into a usage **bucket** based on **rules*
 
 A transaction matches a rule when every action is covered by an `allow`/`require` pattern and every `require` pattern is present. Each authorizing account is billed the full cost against the highest-priority matching bucket it still has room in, spilling to lower-priority buckets when full. Delete the wildcard bucket to cover only specific contracts. The service refuses to start if free transactions are enabled and no bucket exists.
 
+Buckets can optionally be restricted to explicit members by setting `members_only: true` through the authenticated admin API. An app token can then maintain membership with idempotent `PUT` and `DELETE` requests to `/v2/admin/buckets/:bucket/members/:account`. Non-members skip that bucket and may still fall back to another matching public bucket.
+
 Upgrading from the previous single-limit version: on first start, the old `provider.free_transactions.limit_ms/kb` values are seeded automatically into a `wildcard` bucket.
 
 **Paid cosigning** (`ENABLE_PAID_TRANSACTIONS=true`, the default) appends a fee transfer to the cosigned transaction:

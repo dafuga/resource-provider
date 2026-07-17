@@ -8,6 +8,7 @@ export interface PolicyBucket {
 	priority: number;
 	limit_ms: number;
 	limit_kb: number;
+	members_only: boolean;
 }
 
 export interface PolicyRule {
@@ -83,7 +84,8 @@ export function resolveFreeGrant(
 	actions: MatchAction[],
 	needs: { cpu: number; net: number },
 	billed: string[],
-	usageLookup: (account: string, bucket: string) => { cpu: number; net: number }
+	usageLookup: (account: string, bucket: string) => { cpu: number; net: number },
+	isMember: (account: string, bucket: PolicyBucket) => boolean = () => false
 ): Array<{ account: string; bucket: string }> | null {
 	const candidates = resolveCandidateBuckets(policy, actions);
 	if (candidates.length === 0) {
@@ -92,6 +94,9 @@ export function resolveFreeGrant(
 	const assignments: Array<{ account: string; bucket: string }> = [];
 	for (const account of billed) {
 		const fit = candidates.find((bucket) => {
+			if (bucket.members_only && !isMember(account, bucket)) {
+				return false;
+			}
 			const usage = usageLookup(account, bucket.name);
 			return (
 				usage.cpu + needs.cpu <= bucket.limit_ms * 1000 &&

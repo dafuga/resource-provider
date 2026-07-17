@@ -197,19 +197,22 @@ describe('admin bucket endpoints', () => {
 			priority: number;
 			limit_ms: number;
 			limit_kb: number;
+			members_only: boolean;
 		}>;
 		expect(buckets.find((bucket) => bucket.name === 'wildcard')).toEqual({
 			name: 'wildcard',
 			priority: 1000,
 			limit_ms: 5,
-			limit_kb: 10
+			limit_kb: 10,
+			members_only: false
 		});
 		const one = await app.handle(adminRequest('/buckets/wildcard', appToken));
 		expect(await one.json()).toEqual({
 			name: 'wildcard',
 			priority: 1000,
 			limit_ms: 5,
-			limit_kb: 10
+			limit_kb: 10,
+			members_only: false
 		});
 	});
 	it('404s on unknown buckets', async () => {
@@ -225,7 +228,8 @@ describe('admin bucket endpoints', () => {
 				adminRequest('/buckets/test-bkt', appToken, 'PUT', {
 					priority: 10,
 					limit_ms: 50,
-					limit_kb: 50
+					limit_kb: 50,
+					members_only: true
 				})
 			);
 			expect(put.status).toBe(200);
@@ -233,7 +237,8 @@ describe('admin bucket endpoints', () => {
 				name: 'test-bkt',
 				priority: 10,
 				limit_ms: 50,
-				limit_kb: 50
+				limit_kb: 50,
+				members_only: true
 			});
 			const read = await app.handle(adminRequest('/buckets/test-bkt', appToken));
 			expect(((await read.json()) as { priority: number }).priority).toBe(10);
@@ -241,6 +246,31 @@ describe('admin bucket endpoints', () => {
 			policyDatabase.removeBucket('test-bkt');
 			invalidatePolicyCache();
 		}
+	});
+	it('adds and removes members from a bucket', async () => {
+		policyDatabase.removeBucket('test-members');
+		policyDatabase.putBucket('test-members', 10, 50, 50, true);
+		try {
+			const add = await app.handle(
+				adminRequest('/buckets/test-members/members/alice', appToken, 'PUT')
+			);
+			expect(add.status).toBe(200);
+			expect(policyDatabase.isBucketMember('test-members', 'alice')).toBeTrue();
+
+			const remove = await app.handle(
+				adminRequest('/buckets/test-members/members/alice', appToken, 'DELETE')
+			);
+			expect(remove.status).toBe(200);
+			expect(policyDatabase.isBucketMember('test-members', 'alice')).toBeFalse();
+		} finally {
+			policyDatabase.removeBucket('test-members');
+		}
+	});
+	it('404s adding a member to an unknown bucket', async () => {
+		const response = await app.handle(
+			adminRequest('/buckets/test-nope/members/alice', appToken, 'PUT')
+		);
+		expect(response.status).toBe(404);
 	});
 	it('rejects invalid limits via schema', async () => {
 		const put = await app.handle(
@@ -286,7 +316,8 @@ describe('admin bucket endpoints', () => {
 				name: 'test-gone',
 				priority: 50,
 				limit_ms: 10,
-				limit_kb: 10
+				limit_kb: 10,
+				members_only: false
 			});
 
 			const response = await app.handle(adminRequest('/buckets/test-gone', appToken, 'DELETE'));
