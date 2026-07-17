@@ -114,7 +114,8 @@ export function getApp(): Elysia {
 	if (!app) {
 		app = new Elysia({
 			adapter: BunAdapter,
-			aot: true
+			aot: true,
+			serve: { reusePort: false }
 		});
 		app.use(cors({ origin: true }));
 		app.use(swagger(swaggerConfig));
