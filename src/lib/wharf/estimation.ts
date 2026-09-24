@@ -8,6 +8,7 @@ export interface ResourceNeeds {
 	cpu: number;
 	net: number;
 	ram: number;
+	ramPayer?: string;
 }
 
 export interface ResourceCosts {
@@ -30,6 +31,7 @@ export function determineResourceNeeds(samples: API.v1.SendTransactionResponse[]
 	const cpu = cpuMedian(samples);
 	const net = samples[0].processed.net_usage;
 	let ram = 0;
+	let ramPayer: string | undefined;
 	const exception = samples[0].processed.except;
 	if (exception && exception.name) {
 		switch (exception.name) {
@@ -39,8 +41,9 @@ export function determineResourceNeeds(samples: API.v1.SendTransactionResponse[]
 					needs: number;
 					available: number;
 				} = exception.stack[0].data;
-				const { available, needs } = data;
+				const { account, available, needs } = data;
 				ram = needs - available;
+				ramPayer = account;
 				break;
 			}
 			default: {
@@ -60,7 +63,7 @@ export function determineResourceNeeds(samples: API.v1.SendTransactionResponse[]
 			}
 		}
 	}
-	return { cpu, net, ram };
+	return ramPayer ? { cpu, net, ram, ramPayer } : { cpu, net, ram };
 }
 
 export async function computeResourceNeeds(

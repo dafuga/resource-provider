@@ -51,6 +51,41 @@ export const PROVIDER_ACCOUNT_NAME = process.env.PROVIDER_ACCOUNT_NAME;
 export const PROVIDER_ACCOUNT_PERMISSION = process.env.PROVIDER_ACCOUNT_PERMISSION;
 export const PROVIDER_ACCOUNT_PRIVATEKEY = process.env.PROVIDER_ACCOUNT_PRIVATEKEY;
 
+// Optional game-funded RAM. The existing manager permission signs only eosio::buyrambytes;
+// the provider's noop permission remains separate. Disabled until a game operator funds it.
+export const PROVIDER_RAM_SPONSOR_ENABLED = isENVTrue(
+	process.env.PROVIDER_RAM_SPONSOR_ENABLED ?? 'false'
+);
+export const PROVIDER_RAM_GAME_CONTRACT = process.env.PROVIDER_RAM_GAME_CONTRACT ?? '';
+export const PROVIDER_RAM_MAX_BYTES = Number(process.env.PROVIDER_RAM_MAX_BYTES ?? 16384);
+export const PROVIDER_RAM_ACCOUNT_WINDOW_BYTES = Number(
+	process.env.PROVIDER_RAM_ACCOUNT_WINDOW_BYTES ?? 32768
+);
+export const PROVIDER_RAM_GLOBAL_WINDOW_BYTES = Number(
+	process.env.PROVIDER_RAM_GLOBAL_WINDOW_BYTES ?? 262144
+);
+export const PROVIDER_RAM_MAX_COST = Number(process.env.PROVIDER_RAM_MAX_COST ?? 4);
+
+if (PROVIDER_RAM_SPONSOR_ENABLED) {
+	if (!ENABLE_RESOURCE_PROVIDER || !MANAGER_ACCOUNT_NAME || !PROVIDER_RAM_GAME_CONTRACT) {
+		throw new Error(
+			'Sponsored RAM requires provider, manager account, and game contract configuration.'
+		);
+	}
+	for (const limit of [
+		PROVIDER_RAM_MAX_BYTES,
+		PROVIDER_RAM_ACCOUNT_WINDOW_BYTES,
+		PROVIDER_RAM_GLOBAL_WINDOW_BYTES
+	]) {
+		if (!Number.isSafeInteger(limit) || limit <= 0) {
+			throw new Error('Sponsored RAM byte limits must be positive safe integers.');
+		}
+	}
+	if (!Number.isFinite(PROVIDER_RAM_MAX_COST) || PROVIDER_RAM_MAX_COST <= 0) {
+		throw new Error('Sponsored RAM cost cap must be positive.');
+	}
+}
+
 if (ENABLE_RESOURCE_PROVIDER) {
 	if (!PROVIDER_ACCOUNT_NAME) {
 		throw new Error(

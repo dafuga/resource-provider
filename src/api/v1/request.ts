@@ -15,8 +15,15 @@ import { getStaleContract, invalidateContractCache } from '$lib/wharf/contracts'
 import { RAM_SAFETY_BUFFER_BYTES, computeResourceNeeds } from '$lib/wharf/estimation';
 import type { ResourceNeeds } from '$lib/wharf/estimation';
 import { calculateCosts, calculateTotalFee } from '$lib/wharf/pricing';
-import { getProviderSession, signTransaction } from '$lib/wharf/session';
+import { getResourcesClient } from '$lib/wharf/resources';
+import {
+	getManagerSession,
+	getProviderSession,
+	signManagerTransaction,
+	signTransaction
+} from '$lib/wharf/session';
 import { createSigningRequest, resolveTransaction } from '$lib/wharf/signing-request';
+import { planSponsoredRam } from '$lib/wharf/sponsored-ram';
 import {
 	checkResourceSufficiency,
 	resolvePermissionLevel,
@@ -30,8 +37,15 @@ import {
 	PROVIDER_FREE_TRANSACTIONS_LIMIT_MS,
 	PROVIDER_PAID_TRANSACTIONS_FEE_DEFAULT_REF,
 	PROVIDER_PAID_TRANSACTIONS_FEE_MEMO,
-	PROVIDER_PAID_TRANSACTIONS_FEE_RECIPIENT
+	PROVIDER_PAID_TRANSACTIONS_FEE_RECIPIENT,
+	PROVIDER_RAM_SPONSOR_ENABLED,
+	PROVIDER_RAM_GAME_CONTRACT,
+	PROVIDER_RAM_MAX_BYTES,
+	PROVIDER_RAM_ACCOUNT_WINDOW_BYTES,
+	PROVIDER_RAM_GLOBAL_WINDOW_BYTES,
+	PROVIDER_RAM_MAX_COST
 } from 'src/config';
+import { getManagerAccountStatus } from 'src/manager/manage/manager';
 
 function validateRequest(cosigner: PermissionLevel, request: SigningRequest): void {
 	const actions = request.getRawActions();
@@ -87,28 +101,93 @@ async function processRequest(
 	}
 	providerLog.debug('Account data retrieved', { account: String(requester.actor) });
 
-	checkResourceSufficiency(accountData);
-	providerLog.debug('Resource sufficiency check passed');
-
 	let transaction = await resolveTransaction(request, requester);
 	providerLog.debug('Transaction resolved', { actions: transaction.actions.length });
+	const originalActions = [...transaction.actions];
 
 	transaction = await addNoopAction(transaction, cosigner);
 	providerLog.debug('Noop action added');
 
 	const resourceNeeds = await computeResourceNeeds(transaction);
 	providerLog.debug('Resource needs computed', resourceNeeds);
+	const isGameRequest =
+		PROVIDER_RAM_SPONSOR_ENABLED &&
+		originalActions.length > 0 &&
+		originalActions.every((action) => String(action.account) === PROVIDER_RAM_GAME_CONTRACT);
+	if (!(isGameRequest && resourceNeeds.ram > 0)) {
+		checkResourceSufficiency(accountData);
+	}
+	providerLog.debug('Resource sufficiency check passed');
+	let ramSponsored = false;
+	let sponsoredBytes = 0;
 
 	if (resourceNeeds.ram > 0) {
 		const ramBytes = UInt64.from(resourceNeeds.ram + RAM_SAFETY_BUFFER_BYTES);
-		transaction = await addBuyRAMBytesAction(transaction, requester, ramBytes);
+		if (isGameRequest) {
+			const manager = await getManagerSession();
+			const managerAccount = await getClient().v1.chain.get_account(manager.actor);
+			const managerStatus = getManagerAccountStatus(manager, managerAccount);
+			if (managerStatus.requiresUpdateAuth || managerStatus.requiresLinkAuthBuyRAM) {
+				throw new Error('RAM sponsor account is not configured for purchases.');
+			}
+			const purchase = planSponsoredRam(
+				String(requester.actor),
+				originalActions,
+				resourceNeeds.ramPayer,
+				Number(ramBytes),
+				{
+					gameContract: PROVIDER_RAM_GAME_CONTRACT,
+					sponsor: String(manager.actor),
+					maxBytes: PROVIDER_RAM_MAX_BYTES
+				}
+			);
+			if (!purchase) throw new Error('Transaction is not eligible for sponsored RAM.');
+			const ramState = await getResourcesClient().v1.ram.get_state();
+			const quotedCost = ramState.price_per_kb(purchase.bytes / 1024);
+			if (
+				quotedCost.units.gt(Asset.fromFloat(PROVIDER_RAM_MAX_COST, ANTELOPE_SYSTEM_TOKEN).units)
+			) {
+				throw new Error('Sponsored RAM purchase exceeds the configured cost cap.');
+			}
+			if (
+				!managerAccount.core_liquid_balance ||
+				managerAccount.core_liquid_balance.units.lt(quotedCost.units)
+			) {
+				throw new Error('RAM sponsor account lacks liquid funds for this purchase.');
+			}
+			transaction = await addBuyRAMBytesAction(
+				transaction,
+				manager.permissionLevel,
+				ramBytes,
+				requester.actor
+			);
+			ramSponsored = true;
+			sponsoredBytes = purchase.bytes;
+		} else {
+			transaction = await addBuyRAMBytesAction(transaction, requester, ramBytes);
+		}
 	}
 
 	const withinQuota = await checkQuota(String(requester.actor), resourceNeeds);
+	const reserveSponsoredRam = () => {
+		if (
+			ramSponsored &&
+			!usageDatabase.reserveRamSponsorship(
+				String(requester.actor),
+				sponsoredBytes,
+				PROVIDER_RAM_ACCOUNT_WINDOW_BYTES,
+				PROVIDER_RAM_GLOBAL_WINDOW_BYTES
+			)
+		) {
+			throw new Error('Sponsored RAM allowance is temporarily exhausted.');
+		}
+	};
 
 	if (withinQuota) {
 		providerLog.debug('Within free quota, signing transaction');
 		const providerSignature = await signTransaction(transaction);
+		const sponsorSignature = ramSponsored ? await signManagerTransaction(transaction) : null;
+		reserveSponsoredRam();
 		await usageDatabase.incrementUsage(
 			String(requester.actor),
 			resourceNeeds.cpu,
@@ -125,7 +204,10 @@ async function processRequest(
 			data: {
 				request: ['transaction', transaction],
 				resources: { cpu: resourceNeeds.cpu, net: resourceNeeds.net, ram: resourceNeeds.ram },
-				signatures: [String(providerSignature)]
+				signatures: [
+					String(providerSignature),
+					...(sponsorSignature ? [String(sponsorSignature)] : [])
+				]
 			}
 		};
 	}
@@ -140,7 +222,11 @@ async function processRequest(
 
 	providerLog.debug('Exceeds free quota, calculating paid costs');
 	const costs = await calculateCosts(resourceNeeds);
-	const totalFee = calculateTotalFee(costs);
+	const totalFee = calculateTotalFee({
+		cpu: costs.cpu,
+		net: costs.net,
+		ram: ramSponsored ? Asset.from(0, ANTELOPE_SYSTEM_TOKEN) : costs.ram
+	});
 	const providerFee = calculateTotalFee({
 		cpu: costs.cpu,
 		net: costs.net,
@@ -162,6 +248,8 @@ async function processRequest(
 	);
 
 	const providerSignature = await signTransaction(transaction);
+	const sponsorSignature = ramSponsored ? await signManagerTransaction(transaction) : null;
+	reserveSponsoredRam();
 
 	providerLog.info('Provided resources (paid)', {
 		account: String(requester.actor),
@@ -175,12 +263,15 @@ async function processRequest(
 			costs: {
 				cpu: String(costs.cpu),
 				net: String(costs.net),
-				ram: String(costs.ram)
+				ram: String(ramSponsored ? Asset.from(0, ANTELOPE_SYSTEM_TOKEN) : costs.ram)
 			},
 			fee: String(totalFee),
 			request: ['transaction', transaction],
 			resources: { cpu: resourceNeeds.cpu, net: resourceNeeds.net, ram: resourceNeeds.ram },
-			signatures: [String(providerSignature)]
+			signatures: [
+				String(providerSignature),
+				...(sponsorSignature ? [String(sponsorSignature)] : [])
+			]
 		}
 	};
 }
