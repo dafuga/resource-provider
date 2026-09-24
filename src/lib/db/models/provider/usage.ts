@@ -44,15 +44,58 @@ export class UsageDatabase extends AbstractDatabase {
 			.run();
 	}
 
+	reserveRamSponsorship(
+		account: string,
+		bytes: number,
+		accountLimit: number,
+		globalLimit: number
+	): boolean {
+		if (!Number.isSafeInteger(bytes) || bytes <= 0) return false;
+		const windowStart = this.windowStart();
+		return database.transaction((transaction) => {
+			const accountUsage = transaction
+				.select({ bytes: sql<number>`coalesce(sum(${this.schema.ramSponsorship.bytes}), 0)` })
+				.from(this.schema.ramSponsorship)
+				.where(
+					and(
+						eq(this.schema.ramSponsorship.account, account),
+						gt(this.schema.ramSponsorship.created_at, windowStart)
+					)
+				)
+				.get();
+			const globalUsage = transaction
+				.select({ bytes: sql<number>`coalesce(sum(${this.schema.ramSponsorship.bytes}), 0)` })
+				.from(this.schema.ramSponsorship)
+				.where(gt(this.schema.ramSponsorship.created_at, windowStart))
+				.get();
+			if (
+				(accountUsage?.bytes ?? 0) + bytes > accountLimit ||
+				(globalUsage?.bytes ?? 0) + bytes > globalLimit
+			) {
+				return false;
+			}
+			transaction
+				.insert(this.schema.ramSponsorship)
+				.values({ account, bytes, created_at: Math.floor(Date.now() / 1000) })
+				.run();
+			return true;
+		});
+	}
+
 	async cleanupExpired(): Promise<void> {
 		database
 			.delete(this.schema.usage)
 			.where(lt(this.schema.usage.created_at, this.windowStart()))
 			.run();
+		database
+			.delete(this.schema.ramSponsorship)
+			.where(lt(this.schema.ramSponsorship.created_at, this.windowStart()))
+			.run();
 	}
 
 	async resetAllUsage(): Promise<void> {
 		database.delete(this.schema.usage).run();
+		database.delete(this.schema.ramSponsorship).run();
 	}
 }
 

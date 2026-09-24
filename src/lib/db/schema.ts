@@ -32,3 +32,17 @@ export const usage = sqliteTable(
 	},
 	(table) => [index('idx_usage_account_created').on(table.account, table.created_at)]
 );
+
+export const ramSponsorship = sqliteTable(
+	'ram_sponsorship',
+	{
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		account: text('account').notNull(),
+		bytes: integer('bytes').notNull(),
+		created_at: integer('created_at').notNull()
+	},
+	(table) => [
+		index('idx_ram_sponsorship_account_created').on(table.account, table.created_at),
+		index('idx_ram_sponsorship_created').on(table.created_at)
+	]
+);

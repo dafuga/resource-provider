@@ -123,6 +123,30 @@ To completely remove an account from management, use the `manager remove` comman
 rpcli manager remove ihasnocpunet
 ```
 
+## Sponsored player RAM for one game
+
+A dedicated Resource Provider instance can buy RAM for a game's players.
+Set `PROVIDER_RAM_SPONSOR_ENABLED=true` and
+`PROVIDER_RAM_GAME_CONTRACT=rngfront.gm`, then configure a funded manager
+account with `rpcli manager setup`. The manager's key should be linked only to
+`eosio::buyrambytes` and `eosio::powerup`. The provider estimates a player
+shortfall and places a manager-paid `buyrambytes` for that player before the
+game action. Both provider and manager signatures are returned. The player
+receives the RAM and signs only the game action.
+Enable free transaction sponsorship with sufficient CPU/NET quota for the
+game; a paid (HTTP 402) offer is deliberately rejected by Frontier's browser.
+
+Sponsorship is disabled by default. It accepts only actions from the configured
+game contract, authorized by the recipient. Per-transaction bytes and quoted
+cost, per-player rolling bytes, and service-wide rolling bytes are capped.
+Unbroadcast offers reserve budget, so monitor reservations and actual chain
+purchases separately. The public Greymass endpoint does not pay for a game's
+players; its current RAM proposal charges the requesting account.
+
+At a 24 September 2026 Jungle4 quote, 16 KiB cost about 3.26 EOS. The default
+4 EOS quoted-cost cap and 256 KiB rolling service budget are launch limits,
+not funding. Use a project-specific manager account and monitor its balance.
+
 ### Tests
 
 `make test`

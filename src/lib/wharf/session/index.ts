@@ -50,6 +50,15 @@ export function getManagerSession(): Promise<Session> {
 
 export async function signTransaction(transaction: Transaction): Promise<Signature> {
 	const session = await getProviderSession();
+	return signWithSession(transaction, session);
+}
+
+export async function signManagerTransaction(transaction: Transaction): Promise<Signature> {
+	const session = await getManagerSession();
+	return signWithSession(transaction, session);
+}
+
+function signWithSession(transaction: Transaction, session: Session): Signature {
 	const digest = transaction.signingDigest(Checksum256.from(session.chain.id));
 	const privateKey = PrivateKey.from(session.walletPlugin.data.privateKey);
 	return privateKey.signDigest(digest);
