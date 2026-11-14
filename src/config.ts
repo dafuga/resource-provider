@@ -20,6 +20,7 @@ export const ANTELOPE_SAMPLE_ACCOUNT = process.env.ANTELOPE_SAMPLE_ACCOUNT ?? 'e
 export const ANTELOPE_SYSTEM_CONTRACT = process.env.ANTELOPE_SYSTEM_CONTRACT ?? 'core.vaulta';
 export const ANTELOPE_SYSTEM_TOKEN = process.env.ANTELOPE_SYSTEM_TOKEN ?? '4,A';
 export const ANTELOPE_TOKEN_CONTRACT = process.env.ANTELOPE_TOKEN_CONTRACT ?? 'core.vaulta';
+export const JUNGLE4_CHAIN_ID = '73e4385a2708e6d7048834fbc1079f2fabb17b3c125b146af438971e90716c4d';
 
 // Feature: Automated Resource Management
 export const ENABLE_RESOURCE_MANAGER = isENVTrue(process.env.ENABLE_RESOURCE_MANAGER ?? 'false');
@@ -39,12 +40,23 @@ export const MANAGER_INC_KB = process.env.MANAGER_INC_KB ? Number(process.env.MA
 export const MANAGER_RENEW_BEFORE_EXPIRY_MINUTES = process.env.MANAGER_RENEW_BEFORE_EXPIRY_MINUTES
 	? Number(process.env.MANAGER_RENEW_BEFORE_EXPIRY_MINUTES)
 	: 120; // 0 disables
+export const ENABLE_MANAGED_ACCOUNT_RAM = isENVTrue(
+	process.env.ENABLE_MANAGED_ACCOUNT_RAM ?? 'false'
+);
+// Maximum estimated cost (in system tokens) of a single managed-account RAM purchase.
+export const MANAGED_ACCOUNT_RAM_MAX_FEE = process.env.MANAGED_ACCOUNT_RAM_MAX_FEE
+	? Number(process.env.MANAGED_ACCOUNT_RAM_MAX_FEE)
+	: 5;
+export const MANAGED_ACCOUNT_RAM_SUPPORTED = ANTELOPE_CHAIN_ID === JUNGLE4_CHAIN_ID;
 
 if (ENABLE_RESOURCE_MANAGER) {
 	if (!MANAGER_ACCOUNT_NAME) {
 		throw new Error(
 			'If ENABLE_RESOURCE_MANAGER is set to true, MANAGER_ACCOUNT_NAME must also be defined.'
 		);
+	}
+	if (ENABLE_MANAGED_ACCOUNT_RAM && !MANAGED_ACCOUNT_RAM_SUPPORTED) {
+		throw new Error('ENABLE_MANAGED_ACCOUNT_RAM is only supported on Jungle 4 for now.');
 	}
 }
 

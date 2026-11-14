@@ -8,6 +8,7 @@ import { ANTELOPE_SYSTEM_TOKEN } from 'src/config';
 export interface AccountRequiredResources {
 	cpuRequired: boolean;
 	netRequired: boolean;
+	ramRequired?: boolean;
 }
 
 export function getPowerupParamsCPU(

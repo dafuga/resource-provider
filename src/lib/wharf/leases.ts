@@ -34,7 +34,7 @@ function parseExpiry(order: PowerupOrder): number {
 	return Date.parse(order.expires.endsWith('Z') ? order.expires : `${order.expires}Z`);
 }
 
-// True when the weight of leases expiring inside the window outweighs the weight that
+// True when the largest lease expiring inside the window outweighs the weight that
 // stays after it. Using only the newest lease missed a big lease expiring next to a
 // small, newer one (Nov 1 outage). After a same-size renewal it stops triggering.
 function expiringOutweighsRemaining(
@@ -42,15 +42,15 @@ function expiringOutweighsRemaining(
 	weight: 'cpu_weight' | 'net_weight',
 	cutoff: number
 ): boolean {
-	let expiring = 0;
+	let largestExpiring = 0;
 	let remaining = 0;
 	for (const order of orders) {
 		const w = Number(order[weight]);
 		if (!(w > 0)) continue;
-		if (parseExpiry(order) <= cutoff) expiring += w;
+		if (parseExpiry(order) <= cutoff) largestExpiring = Math.max(largestExpiring, w);
 		else remaining += w;
 	}
-	return expiring > remaining;
+	return largestExpiring > remaining;
 }
 
 // An account needs a renewal when its newest CPU (or NET) lease expires within the window.
@@ -83,6 +83,7 @@ export async function getRequiredResourcesWithRenewals(
 	}
 	return {
 		cpuRequired: required.cpuRequired || renewals.cpuRequired,
-		netRequired: required.netRequired || renewals.netRequired
+		netRequired: required.netRequired || renewals.netRequired,
+		ramRequired: required.ramRequired
 	};
 }

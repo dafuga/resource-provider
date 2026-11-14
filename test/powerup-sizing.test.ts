@@ -9,8 +9,10 @@ const managed = ManagedAccount.from({
 	account: 'rngfront.gm',
 	min_ms: Int64.from(5),
 	min_kb: Int64.from(5),
+	min_ram_kb: Int64.zero,
 	inc_ms: Int64.from(10),
 	inc_kb: Int64.from(10),
+	inc_ram_kb: Int64.zero,
 	max_fee: Asset.from('0.2500 EOS')
 });
 const limit = (max: number, used: number) => ({ used, available: 0, max, current_used: used });
