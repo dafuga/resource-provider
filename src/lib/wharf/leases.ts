@@ -69,12 +69,26 @@ export function getLeaseRenewals(
 
 // Shared by managed accounts and the manager's own self-management: low free resources
 // OR a lease about to expire both trigger a powerup.
+export interface RenewalOptions {
+	// Orders already fetched for this account (avoids a second table read).
+	orders?: PowerupOrder[];
+	// Renewal window in minutes; defaults to MANAGER_RENEW_BEFORE_EXPIRY_MINUTES.
+	windowMinutes?: number;
+	now?: number;
+}
+
 export async function getRequiredResourcesWithRenewals(
 	managed: ManagedAccount,
-	data: API.v1.AccountObject
+	data: API.v1.AccountObject,
+	options: RenewalOptions = {}
 ): Promise<AccountRequiredResources> {
 	const required = getAccountRequiredResources(managed, data);
-	const renewals = getLeaseRenewals(await getPowerupOrders(managed.account));
+	const orders = options.orders ?? (await getPowerupOrders(managed.account));
+	const renewals = getLeaseRenewals(
+		orders,
+		options.now ?? Date.now(),
+		options.windowMinutes ?? MANAGER_RENEW_BEFORE_EXPIRY_MINUTES
+	);
 	if (renewals.cpuRequired || renewals.netRequired) {
 		managerLog.info('Account leases expiring soon, renewing', {
 			account: String(managed.account),

@@ -12,7 +12,8 @@ export const v2ManagedAccountType = t.Object({
 	inc_ms: t.Integer(),
 	inc_kb: t.Integer(),
 	inc_ram_kb: t.Optional(t.Integer()),
-	max_fee: t.String()
+	max_fee: t.String(),
+	ram_daily_max_fee: t.Optional(t.Number({ minimum: 0 }))
 });
 
 export const v2ManagerResponseSuccess = t.Object(v2GenericResponse.properties, {

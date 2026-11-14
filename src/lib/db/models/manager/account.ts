@@ -1,4 +1,4 @@
-import { Asset, Int64, Name, NameType, Struct } from '@wharfkit/antelope';
+import { Asset, Float64, Int64, Name, NameType, Struct } from '@wharfkit/antelope';
 import { eq } from 'drizzle-orm';
 import { Static } from 'elysia';
 
@@ -25,6 +25,9 @@ export class ManagedAccount extends Struct {
 	// Maximum fee allowed for a single powerup
 	@Struct.field(Asset) declare max_fee: Asset;
 
+	// Rolling 24h cap on estimated RAM spend (system tokens); 0 or unset uses the default
+	@Struct.field(Float64, { optional: true }) declare ram_daily_max_fee?: Float64;
+
 	toJSON(): typeof schema.users.$inferInsert {
 		return {
 			account: String(this.account),
@@ -34,7 +37,8 @@ export class ManagedAccount extends Struct {
 			inc_ms: Number(this.inc_ms),
 			inc_kb: Number(this.inc_kb),
 			inc_ram_kb: Number(this.inc_ram_kb),
-			max_fee: String(this.max_fee)
+			max_fee: String(this.max_fee),
+			ram_daily_max_fee: Number(this.ram_daily_max_fee ?? 0)
 		};
 	}
 }

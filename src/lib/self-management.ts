@@ -2,14 +2,19 @@ import { Action, Asset, Int64, NameType } from '@wharfkit/antelope';
 import { Session } from '@wharfkit/session';
 
 import { ManagedAccount } from '$lib/db/models/manager/account';
+import { checkAccountHealth } from '$lib/health';
 import { generalLog } from '$lib/logger';
 import { getPowerupParams } from '$lib/wharf/actions/powerup';
 import { getClient } from '$lib/wharf/client';
 import { getContract } from '$lib/wharf/contracts';
 import { inPowerupCooldown, recordPowerup } from '$lib/wharf/cooldown';
-import { getRequiredResourcesWithRenewals } from '$lib/wharf/leases';
+import { getPowerupOrders, getRequiredResourcesWithRenewals } from '$lib/wharf/leases';
 import { getPurchaseAmounts, getResourcesClient, getSampledUsage } from '$lib/wharf/resources';
-import { ANTELOPE_SYSTEM_CONTRACT, ANTELOPE_SYSTEM_TOKEN } from 'src/config';
+import {
+	ANTELOPE_SYSTEM_CONTRACT,
+	ANTELOPE_SYSTEM_TOKEN,
+	MANAGER_SELF_RENEW_BEFORE_EXPIRY_MINUTES
+} from 'src/config';
 
 export interface SelfManagementConfig {
 	minMs: number;
@@ -19,6 +24,8 @@ export interface SelfManagementConfig {
 	maxFee: string;
 	buyramEnabled: boolean;
 	ramMinimumKb: number;
+	// Minutes before expiry to renew the payer's own leases (default MANAGER_SELF_RENEW_BEFORE_EXPIRY_MINUTES).
+	renewBeforeExpiryMinutes?: number;
 }
 
 export function getSelfManagedAccount(actor: NameType, config: SelfManagementConfig) {
@@ -59,12 +66,23 @@ export async function manageSelfResources(session: Session, config: SelfManageme
 	}
 
 	const managed = getSelfManagedAccount(actor, config);
+	const orders = await getPowerupOrders(actor);
+	await checkAccountHealth(data, {
+		role: 'payer',
+		minCpuUs: config.minMs * 1000,
+		orders
+	});
 
 	if (inPowerupCooldown(String(actor))) {
 		generalLog.debug('powerup cooldown active, skipping', { account: String(actor) });
 		return;
 	}
-	const requiredResources = await getRequiredResourcesWithRenewals(managed, data);
+	// The payer renews its own leases well ahead of expiry: if its CPU runs out it can still
+	// rescue itself, but it cannot pay for any other account until it does.
+	const requiredResources = await getRequiredResourcesWithRenewals(managed, data, {
+		orders,
+		windowMinutes: config.renewBeforeExpiryMinutes ?? MANAGER_SELF_RENEW_BEFORE_EXPIRY_MINUTES
+	});
 	const amounts = getPurchaseAmounts(managed, data, requiredResources);
 	const sampleUsage = await getSampledUsage();
 	const powerup = await getResourcesClient().v1.powerup.get_state();

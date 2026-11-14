@@ -47,6 +47,11 @@ export const ENABLE_MANAGED_ACCOUNT_RAM = isENVTrue(
 export const MANAGED_ACCOUNT_RAM_MAX_FEE = process.env.MANAGED_ACCOUNT_RAM_MAX_FEE
 	? Number(process.env.MANAGED_ACCOUNT_RAM_MAX_FEE)
 	: 5;
+// Default cap on estimated RAM spend per managed account per rolling 24h (system tokens).
+// An account's own ram_daily_max_fee overrides it. 0 = no cap.
+export const MANAGED_ACCOUNT_RAM_DAILY_MAX_FEE = process.env.MANAGED_ACCOUNT_RAM_DAILY_MAX_FEE
+	? Number(process.env.MANAGED_ACCOUNT_RAM_DAILY_MAX_FEE)
+	: 0;
 export const MANAGED_ACCOUNT_RAM_SUPPORTED = ANTELOPE_CHAIN_ID === JUNGLE4_CHAIN_ID;
 
 if (ENABLE_RESOURCE_MANAGER) {
@@ -236,3 +241,39 @@ export const RAM_MANAGER_TOKEN = process.env.RAM_MANAGER_TOKEN;
 export const MANAGER_POWERUP_COOLDOWN_SECONDS = process.env.MANAGER_POWERUP_COOLDOWN_SECONDS
 	? Number(process.env.MANAGER_POWERUP_COOLDOWN_SECONDS)
 	: 300;
+
+const envNumber = (name: string, fallback: number): number => {
+	const value = process.env[name];
+	return value !== undefined && value !== '' ? Number(value) : fallback;
+};
+
+// Self-management resilience. The payer renews its own leases further ahead than other
+// accounts: once its CPU hits 0 it can no longer pay for anyone else (Nov 14 outage).
+export const MANAGER_SELF_RENEW_BEFORE_EXPIRY_MINUTES = envNumber(
+	'MANAGER_SELF_RENEW_BEFORE_EXPIRY_MINUTES',
+	360
+); // 0 disables
+// Upper bound of the backoff between failed startup checks (DNS, RPC timeouts...).
+export const MANAGER_SELF_RETRY_MAX_SECONDS = envNumber('MANAGER_SELF_RETRY_MAX_SECONDS', 60);
+// A self-management check that takes longer than this is abandoned so the next one can run.
+export const MANAGER_SELF_CHECK_TIMEOUT_SECONDS = envNumber(
+	'MANAGER_SELF_CHECK_TIMEOUT_SECONDS',
+	120
+);
+// Below this much available CPU the payer cannot sponsor other accounts: the manager rescues
+// the payer first and skips managed accounts for that cycle.
+export const MANAGER_PAYER_RESERVE_MS = envNumber('MANAGER_PAYER_RESERVE_MS', 3);
+
+// Alerts: logged at error level, and POSTed as JSON to ALERT_WEBHOOK_URL when it is set.
+export const ALERT_WEBHOOK_URL = process.env.ALERT_WEBHOOK_URL;
+// Minimum minutes between repeats of the same firing alert.
+export const ALERT_REPEAT_MINUTES = envNumber('ALERT_REPEAT_MINUTES', 30);
+// Alert when the lease carrying most of an account's CPU expires within this many minutes and
+// has not been renewed (renewals normally happen well before this). 0 disables.
+export const ALERT_LEASE_EXPIRY_MINUTES = envNumber('ALERT_LEASE_EXPIRY_MINUTES', 60);
+// Alert when an account stays below its CPU minimum for this long. 0 disables.
+export const ALERT_CPU_GRACE_SECONDS = envNumber('ALERT_CPU_GRACE_SECONDS', 120);
+// Alert when the payer's liquid balance falls below this (system tokens). 0 disables.
+export const ALERT_PAYER_MIN_BALANCE = envNumber('ALERT_PAYER_MIN_BALANCE', 100);
+// Alert when self-management has not completed a check for this many minutes. 0 disables.
+export const ALERT_SELF_STALE_MINUTES = envNumber('ALERT_SELF_STALE_MINUTES', 5);

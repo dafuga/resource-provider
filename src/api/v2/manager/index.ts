@@ -22,7 +22,8 @@ export async function addManagedAccount({
 		inc_ms: body.inc_ms,
 		inc_kb: body.inc_kb,
 		inc_ram_kb: body.inc_ram_kb ?? 0,
-		max_fee: body.max_fee
+		max_fee: body.max_fee,
+		ram_daily_max_fee: body.ram_daily_max_fee ?? 0
 	});
 	return {
 		code: 200,

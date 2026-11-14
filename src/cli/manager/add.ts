@@ -46,20 +46,39 @@ export function makeManagerAddCommand() {
 				'RAM increment to buy in kilobytes when the RAM minimum is not met (default: 0, disabled)'
 			).default(0)
 		)
+		.addArgument(
+			new Argument(
+				'[ram_daily_max_fee]',
+				'Cap on estimated RAM spend for this account per rolling 24h, in system tokens (default: 0, uses MANAGED_ACCOUNT_RAM_DAILY_MAX_FEE)'
+			).default(0)
+		)
 		.description('Automatically manage CPU/NET/RAM resources for an account')
-		.action((account, min_ms, min_kb, inc_ms, inc_kb, max_fee, min_ram_kb, inc_ram_kb) => {
-			const data = ManagedAccount.from({
+		.action(
+			(
 				account,
 				min_ms,
 				min_kb,
-				min_ram_kb,
 				inc_ms,
 				inc_kb,
+				max_fee,
+				min_ram_kb,
 				inc_ram_kb,
-				max_fee: String(Asset.fromFloat(Number(max_fee), ANTELOPE_SYSTEM_TOKEN))
-			});
-			managerLog.info('Adding account to manage', objectify(data));
-			managedAccounts.addManagedAccount(data);
-		});
+				ram_daily_max_fee
+			) => {
+				const data = ManagedAccount.from({
+					account,
+					min_ms,
+					min_kb,
+					min_ram_kb,
+					inc_ms,
+					inc_kb,
+					inc_ram_kb,
+					max_fee: String(Asset.fromFloat(Number(max_fee), ANTELOPE_SYSTEM_TOKEN)),
+					ram_daily_max_fee: Number(ram_daily_max_fee)
+				});
+				managerLog.info('Adding account to manage', objectify(data));
+				managedAccounts.addManagedAccount(data);
+			}
+		);
 	return command;
 }

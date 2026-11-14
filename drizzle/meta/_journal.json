@@ -57,6 +57,13 @@
       "when": 1777676528268,
       "tag": "0007_handy_mercury",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1794690714998,
+      "tag": "0008_ram_daily_cap",
+      "breakpoints": true
     }
   ]
 }

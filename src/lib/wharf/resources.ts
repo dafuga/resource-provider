@@ -11,6 +11,7 @@ import { objectify } from '$lib/utils';
 import {
 	ANTELOPE_SAMPLE_ACCOUNT,
 	ENABLE_MANAGED_ACCOUNT_RAM,
+	MANAGED_ACCOUNT_RAM_DAILY_MAX_FEE,
 	MANAGED_ACCOUNT_RAM_MAX_FEE
 } from 'src/config';
 
@@ -178,4 +179,17 @@ export async function getRamMarket(): Promise<{ base: number; quote: number }> {
 
 export function ramPurchaseAllowed(cost: number, maxFee = MANAGED_ACCOUNT_RAM_MAX_FEE): boolean {
 	return Number.isFinite(cost) && cost <= maxFee;
+}
+
+// The account's own rolling-24h RAM spend cap, or the default when it has none. 0 = no cap.
+export function getRamDailyCap(
+	managed: ManagedAccount,
+	fallback = MANAGED_ACCOUNT_RAM_DAILY_MAX_FEE
+): number {
+	const own = Number(managed.ram_daily_max_fee ?? 0);
+	return own > 0 ? own : fallback;
+}
+
+export function ramWithinDailyCap(spentLastDay: number, cost: number, cap: number): boolean {
+	return !(cap > 0) || spentLastDay + cost <= cap;
 }
