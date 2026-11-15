@@ -1,0 +1,29 @@
+[Unit]
+Description=Antelope Jungle4 resource provider manager
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=resourceprovider
+Group=resourceprovider
+WorkingDirectory=/var/lib/resource-provider
+EnvironmentFile=/etc/resource-provider/env
+ExecStart=/opt/resource-provider/current/dist/rpcli start manager
+Restart=always
+RestartSec=15
+TimeoutStopSec=30
+KillSignal=SIGTERM
+Nice=10
+CPUQuota=25%
+MemoryMax=256M
+StateDirectory=resource-provider
+LogsDirectory=resource-provider
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/resource-provider /var/log/resource-provider
+
+[Install]
+WantedBy=multi-user.target

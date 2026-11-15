@@ -2,9 +2,11 @@
 
 The Antelope Resource Provider application provides the following features:
 
-- **Resource Manager**: Automatically manage network resources (CPU + NET) of selected accounts.
-- (INCOMPLETE) **Resource Provider**: Provide an HTTP API that allows users to request the coverage of network resources by cosigning transactions.
-- (INCOMPLETE) **Request a Powerup**: Provide an HTTP API that allows users to request a powerup to their account by supplying the account name.
+- **Resource Manager**: Automatically manage network resources (CPU + NET, optionally RAM) for a configured list of accounts using PowerUp.
+- **Resource Provider**: HTTP API that cosigns transactions to cover network resources on behalf of requesting accounts. Supports a free tier (per-account daily CPU/NET limits) and a paid tier (fee transfer appended to the transaction).
+- **Light Account Cosigning**: HTTP API that cosigns `authkey` transactions for light accounts, billing the PowerUp cost plus a configurable margin.
+- **Self-Management**: The service account automatically PowerUps itself (and optionally buys RAM) on a schedule so it stays operational.
+- (INCOMPLETE) **Request a Powerup**: Direct per-account PowerUp endpoint. Implementation exists in-tree but is currently disabled.
 
 ## NOTE: THIS APPLICATION IN DEVELOPMENT
 
@@ -121,6 +123,71 @@ To completely remove an account from management, use the `manager remove` comman
 
 ```
 rpcli manager remove ihasnocpunet
+```
+
+## Setup as Resource Provider
+
+The Resource Provider runs an HTTP API that cosigns transactions to cover CPU and NET for requesting accounts. It uses a dedicated account (distinct from the manager account) whose permission is restricted to the noop action (and the light account `authkey` action, if enabled).
+
+### Modify Configuration
+
+At minimum:
+
+```
+# Enable the provider API
+ENABLE_RESOURCE_PROVIDER=true
+
+# The cosigning account
+PROVIDER_ACCOUNT_NAME=accountname
+
+# Enable one or more cosigning modes:
+ENABLE_FREE_TRANSACTIONS=true
+ENABLE_PAID_TRANSACTIONS=true
+```
+
+If no `PROVIDER_ACCOUNT_PRIVATEKEY` is set, one will be generated on first run.
+
+Free cosigning requires `PROVIDER_FREE_TRANSACTIONS_LIMIT_MS` and `PROVIDER_FREE_TRANSACTIONS_LIMIT_KB` (the per-account, per-window CPU/NET limits). Paid cosigning is on by default and appends a fee transfer to the transaction; see `.env.example` for fee, recipient, and memo configuration.
+
+See `.env.example` for the full list of provider options, including resource-sufficiency gating (`PROVIDER_REQUIRE_RESOURCE_NEED`), the usage window (`PROVIDER_USAGE_WINDOW_HOURS`), and the light account cosigning feature (`ENABLE_LIGHTACCOUNT_PROVIDER`).
+
+### Account Permission Setup
+
+With the provider configuration in place, run:
+
+```
+rpcli provider setup
+```
+
+This generates a signing request that creates the dedicated provider permission on the account, binds the provider's key to it, and links the permission to the noop action (and the light account `authkey` action, if `ENABLE_LIGHTACCOUNT_PROVIDER=true`). Open the printed link in your browser, sign with the account's active permission, then re-run the command to verify the account is configured.
+
+## Self-Management
+
+When `ENABLE_SELF_MANAGEMENT=true` (the default), the service runs a cron job that keeps the configured `MANAGER_ACCOUNT_NAME` operational by automatically PowerUp-ing CPU and NET when it drops below `MANAGER_MIN_MS` / `MANAGER_MIN_KB`, and (if `MANAGER_BUYRAM_ENABLED=true`) buying a small amount of RAM when the account falls below `MANAGER_RAM_MINIMUM_KB`. Each cycle caps payment at `MANAGER_MAX_FEE`. The schedule is controlled by `MANAGER_SELF_CRONJOB`.
+
+This feature requires the same account setup as the Resource Manager (`rpcli manager setup`).
+
+## Running the Services
+
+Start everything:
+
+```
+rpcli start
+```
+
+Or start a single service:
+
+```
+rpcli start api
+rpcli start manager
+```
+
+## Usage and Database Commands
+
+```
+rpcli usage <account>   # Show cosigning usage for an account (within PROVIDER_USAGE_WINDOW_HOURS)
+rpcli reset             # Clear all usage-tracking records
+rpcli vacuum            # Force SQLite VACUUM on the database
 ```
 
 ### Tests

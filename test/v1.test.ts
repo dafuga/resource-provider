@@ -1,8 +1,9 @@
-import { beforeAll, describe, expect, it } from 'bun:test';
-import type { Elysia } from 'elysia';
+import { beforeAll, describe, expect, it, spyOn } from 'bun:test';
+import type { Elysia, Static } from 'elysia';
 
 import { server } from '../src/provider';
 
+import type { v1ResponseSuccess } from '$api/v1/types';
 import { PROVIDER_ACCOUNT_NAME, PROVIDER_ACCOUNT_PERMISSION } from 'src/config';
 
 const mockRequest =
@@ -21,6 +22,36 @@ const mockRequestPayload = {
 };
 
 let app: Elysia;
+
+const cosigningRpcPaths = [
+	'/v1/chain/get_account',
+	'/v1/chain/get_info',
+	'/v1/chain/get_raw_abi',
+	'/v1/chain/compute_transaction'
+];
+
+function traceRpcRequests(failingPath?: string) {
+	const fixtureFetch = globalThis.fetch;
+	const paths: string[] = [];
+	const fetchSpy = spyOn(globalThis, 'fetch').mockImplementation(
+		Object.assign(
+			async (...[input, init]: Parameters<typeof fetch>) => {
+				const url = input instanceof Request ? input.url : String(input);
+				const path = new URL(url).pathname;
+				paths.push(path);
+				if (path === failingPath) {
+					return Response.json(
+						{ code: 503, message: 'Synthetic node unavailable' },
+						{ status: 503 }
+					);
+				}
+				return fixtureFetch(input, init);
+			},
+			{ preconnect: fixtureFetch.preconnect }
+		)
+	);
+	return { paths, restore: () => fetchSpy.mockRestore() };
+}
 
 function makeRequest(path: string, data: unknown) {
 	return new Request(`http://localhost${path}`, {
@@ -125,11 +156,50 @@ describe('v1/resource_provider/request_transaction', () => {
 	});
 
 	describe('request validation', () => {
-		it('accepts request', async () => {
-			const request = makeRequest('/v1/resource_provider/request_transaction', mockRequestPayload);
-			const response = await app.handle(request);
-			expect(response.ok).toBeTrue();
+		it('returns a cosigned transaction without broadcasting it', async () => {
+			const rpc = traceRpcRequests();
+			try {
+				const request = makeRequest(
+					'/v1/resource_provider/request_transaction',
+					mockRequestPayload
+				);
+				const response = await app.handle(request);
+				const body = (await response.json()) as Static<typeof v1ResponseSuccess>;
+				expect(response.status).toBe(200);
+				expect(body.code).toBe(200);
+				expect(body.data.request[0]).toBe('transaction');
+				expect(body.data.signatures).toHaveLength(1);
+				expect(rpc.paths).toContain('/v1/chain/compute_transaction');
+				expect(rpc.paths.every((path) => cosigningRpcPaths.includes(path))).toBeTrue();
+			} finally {
+				rpc.restore();
+			}
 		});
+		it.each(['/v1/chain/get_account', '/v1/chain/compute_transaction'])(
+			'rejects an upstream 503 from %s without broadcasting or returning signatures',
+			async (failingPath) => {
+				const rpc = traceRpcRequests(failingPath);
+				try {
+					const request = makeRequest(
+						'/v1/resource_provider/request_transaction',
+						mockRequestPayload
+					);
+					const response = await app.handle(request);
+					const body = (await response.json()) as { message: string; data?: unknown };
+					expect(rpc.paths).toContain(failingPath);
+					expect(response.status).toBe(500);
+					expect(body.message).toContain(
+						failingPath === '/v1/chain/get_account'
+							? 'Unable to retrieve account data'
+							: 'HTTP 503 at /v1/chain/compute_transaction'
+					);
+					expect(body.data).toBeUndefined();
+					expect(rpc.paths.every((path) => cosigningRpcPaths.includes(path))).toBeTrue();
+				} finally {
+					rpc.restore();
+				}
+			}
+		);
 		it('requires request/transaction/packed', async () => {
 			const request = makeRequest('/v1/resource_provider/request_transaction', {
 				signer: mockSigner

@@ -1,0 +1,232 @@
+diff --git a/src/lib/server/resource-provider.ts b/src/lib/server/resource-provider.ts
+--- a/src/lib/server/resource-provider.ts
++++ b/src/lib/server/resource-provider.ts
+@@ -209,14 +209,25 @@
+ 	// transaction, so the contract remains the authoritative setup check.
+ 	if (['startadv', 'starttable'].includes(actionName)) return 'free' as const;
+ 
+-	const [accessRows, adventureRows, usageRows, configRows] = await Promise.all([
++	const [accessRows, adventureRows] = await Promise.all([
+ 		tableRows<{ game_id?: string; status?: number | string }>(
+ 			fetcher,
+ 			endpoint,
+ 			'advaccess',
+ 			player
+ 		),
+-		tableRows<{ game_id?: string }>(fetcher, endpoint, 'adventures', player),
++		tableRows<{ game_id?: string }>(fetcher, endpoint, 'adventures', player)
++	]);
++	const campaignExists = adventureRows.some((row) => row.game_id === gameId);
++	if (!campaignExists) {
++		throw new ResourceProviderRequestError('Campaign was not found on-chain');
++	}
++	const access = accessRows.find((row) => row.game_id === gameId);
++	if (!access) return 'legacy' as const;
++	if (Number(access.status) === 1) return 'paid' as const;
++
++	// Uncapped campaigns do not depend on free-quota RPC availability.
++	const [usageRows, configRows] = await Promise.all([
+ 		tableRows<{ player?: string; utc_day?: number | string; used?: number | string }>(
+ 			fetcher,
+ 			endpoint,
+@@ -232,13 +243,6 @@
+ 			{ limit: 1 }
+ 		)
+ 	]);
+-	const campaignExists = adventureRows.some((row) => row.game_id === gameId);
+-	if (!campaignExists) {
+-		throw new ResourceProviderRequestError('Campaign was not found on-chain');
+-	}
+-	const access = accessRows.find((row) => row.game_id === gameId);
+-	if (!access) return 'legacy' as const;
+-	if (Number(access.status) === 1) return 'paid' as const;
+ 
+ 	const utcDay = Math.floor(Date.now() / 86_400_000);
+ 	const usage = usageRows.find((row) => row.player === player);
+diff --git a/src/lib/server/resource-provider.test.ts b/src/lib/server/resource-provider.test.ts
+--- a/src/lib/server/resource-provider.test.ts
++++ b/src/lib/server/resource-provider.test.ts
+@@ -197,6 +197,7 @@
+ 
+ function chainFetch(options: {
+ 	accessStatus: number;
++	unavailableTable?: 'sponsoruse' | 'sponsorcfg';
+ 	used?: number;
+ 	limit?: number;
+ 	adventures?: string[];
+@@ -208,6 +209,9 @@
+ 			return Response.json({ account_name: CONTRACT_ACCOUNT, abi: contractAbi.toJSON() });
+ 		}
+ 		const body = JSON.parse(String(init?.body ?? '{}')) as { table?: string };
++		if (body.table === options.unavailableTable && options.unavailableTable) {
++			return Response.json({ error: 'Synthetic quota RPC outage' }, { status: 503 });
++		}
+ 		const utcDay = Math.floor(Date.now() / 86_400_000);
+ 		const rows =
+ 			body.table === 'advaccess'
+@@ -295,6 +299,61 @@
+ 		expect(paid.data.coverage).toBe('paid');
+ 	});
+ 
++	test.each([
++		['paid', 'sponsoruse'],
++		['paid', 'sponsorcfg'],
++		['legacy', 'sponsoruse'],
++		['legacy', 'sponsorcfg']
++	] as const)('keeps %s coverage independent of unavailable %s', async (coverage, table) => {
++		const key = PrivateKey.generate('K1');
++		const request = await signingRequest({ action: 'resolvebeat' });
++		const response = await provideGameplayResources(
++			{ request: request.encode(), signer: 'lanecards.gm@active' },
++			{
++				apiEndpoint: 'https://jungle4.example',
++				privateKey: key.toString(),
++				fetcher: chainFetch({
++					accessStatus: 1,
++					...(coverage === 'legacy' ? { access: [] } : {}),
++					unavailableTable: table
++				})
++			}
++		);
++		expect(response.code).toBe(200);
++		expect(response.data.coverage).toBe(coverage);
++		const transaction = Transaction.from(response.data.request[1] as never);
++		expect(transaction.actions.map((action) => action.name.toString())).toEqual([
++			'noop',
++			'resolvebeat'
++		]);
++		expect(
++			Signature.from(response.data.signatures[0]).verifyDigest(
++				transaction.signingDigest(currentChain.id),
++				key.toPublic()
++			)
++		).toBe(true);
++	});
++
++	test.each(['sponsoruse', 'sponsorcfg'] as const)(
++		'preserves a genuine free-coverage failure from %s',
++		async (table) => {
++			const request = await signingRequest({ action: 'resolvebeat' });
++			await expect(
++				provideGameplayResources(
++					{ request: request.encode(), signer: 'lanecards.gm@active' },
++					{
++						apiEndpoint: 'https://jungle4.example',
++						privateKey: PrivateKey.generate('K1').toString(),
++						fetcher: chainFetch({ accessStatus: 0, unavailableTable: table })
++					}
++				)
++			).rejects.toMatchObject({
++				status: 503,
++				message: 'Unable to verify sponsorship allowance'
++			});
++		}
++	);
++
+ 	test('sponsors the future RNG lock action', async () => {
+ 		const key = PrivateKey.generate('K1');
+ 		const request = await signingRequest({ action: 'qresolvebeat' });
+diff --git a/src/lib/state/resourceProviderPlugin.test.ts b/src/lib/state/resourceProviderPlugin.test.ts
+--- a/src/lib/state/resourceProviderPlugin.test.ts
++++ b/src/lib/state/resourceProviderPlugin.test.ts
+@@ -37,7 +37,16 @@
+ const zlib = { deflateRaw, inflateRaw };
+ const abiProvider = { getAbi: async () => abi };
+ async function fixture(
+-	mode: 'ram' | 'cpu' | 'blocked' | 'network' | 'transfer' | 'changed' | 'headers' | 'fee'
++	mode:
++		| 'ram'
++		| 'cpu'
++		| 'blocked'
++		| 'network'
++		| 'transfer'
++		| 'changed'
++		| 'headers'
++		| 'fee'
++		| 'unavailable'
+ ) {
+ 	const request = await SigningRequest.create(
+ 		{
+@@ -65,6 +74,8 @@
+ 	});
+ 	const fetcher = vi.fn(async () => {
+ 		if (mode === 'network') throw new Error('offline');
++		if (mode === 'unavailable')
++			return Response.json({ error: 'Unable to verify sponsorship allowance' }, { status: 503 });
+ 		if (mode === 'blocked') return Response.json({ code: 'ram-unavailable' }, { status: 503 });
+ 		return Response.json(
+ 			{
+@@ -117,13 +128,14 @@
+ 			await expect(plugin.request(request, context)).rejects.toBeInstanceOf(GameResourceError);
+ 		}
+ 	);
+-	test.each(['network', 'fee'] as const)(
++	test.each(['network', 'fee', 'unavailable'] as const)(
+ 		'preserves the original request when %s offers no game funding',
+ 		async (mode) => {
+-			const { request, context, plugin } = await fixture(mode);
++			const { request, context, plugin, status } = await fixture(mode);
+ 			const result = await plugin.request(request, context);
+ 			expect(result.request).toBe(request);
+ 			expect(result.signatures).toBeUndefined();
++			if (mode === 'unavailable') expect(status).toHaveBeenLastCalledWith('self-funded');
+ 		}
+ 	);
+ });
+diff --git a/src/routes/api/v1/resource_provider/request_transaction/request-transaction.test.ts b/src/routes/api/v1/resource_provider/request_transaction/request-transaction.test.ts
+--- a/src/routes/api/v1/resource_provider/request_transaction/request-transaction.test.ts
++++ b/src/routes/api/v1/resource_provider/request_transaction/request-transaction.test.ts
+@@ -65,15 +65,35 @@
+ 		expect(provideGameplayResources).toHaveBeenCalledOnce();
+ 	});
+ 
+-	test('preserves safe provider refusal status codes', async () => {
+-		provideGameplayResources.mockRejectedValue(
+-			new ResourceProviderRequestError('Daily free sponsor limit reached', 429)
+-		);
++	test.each([
++		['Daily free sponsor limit reached', 429],
++		['Resource provider is not configured', 503],
++		['Unable to verify sponsorship allowance', 503],
++		['Fatebound contract ABI is unavailable', 503]
++	] as const)('preserves provider refusal: %s (%s)', async (message, status) => {
++		provideGameplayResources.mockRejectedValue(new ResourceProviderRequestError(message, status));
+ 		const request = providerRequest(JSON.stringify({ request: 'esr://test', signer: {} }));
+ 		const response = await POST({ request, fetch } as never);
+ 
+-		expect(response.status).toBe(429);
+-		expect(await response.json()).toEqual({ error: 'Daily free sponsor limit reached' });
++		expect(response.status).toBe(status);
++		expect(await response.json()).toEqual({ error: message });
++	});
++
++	test('maps an unexpected read failure to a generic 503 without claiming transaction success', async () => {
++		const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
++		try {
++			provideGameplayResources.mockRejectedValue(new Error('Synthetic get_abi transport failure'));
++			const response = await POST({
++				request: providerRequest(JSON.stringify({ request: 'esr://test', signer: {} })),
++				fetch
++			} as never);
++			expect(response.status).toBe(503);
++			expect(await response.json()).toEqual({
++				error: 'Resource provider is temporarily unavailable'
++			});
++		} finally {
++			log.mockRestore();
++		}
+ 	});
+ 
+ 	test('returns a stable signing-stop code when game RAM funding is unavailable', async () => {
+diff --git a/specification/features/implemented/sponsored-gameplay-resources.md b/specification/features/implemented/sponsored-gameplay-resources.md
+--- a/specification/features/implemented/sponsored-gameplay-resources.md
++++ b/specification/features/implemented/sponsored-gameplay-resources.md
+@@ -32,6 +32,8 @@
+ - A campaign with `advaccess.status == 1`, or a migration-safe legacy campaign
+   with no access row, receives uncapped sponsorship and does not consume the free
+   daily allowance.
++- The endpoint reads free usage and configuration only for quota-limited campaigns;
++  paid and legacy sponsorship does not depend on the free-quota RPCs being available.
+ - Preview and locked campaigns consume the account-level free allowance; their
+   existing access gates still decide which gameplay actions are permitted.
+ - Each durable sponsor usage row is paid for by its player, preventing arbitrary
