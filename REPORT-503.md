@@ -34,7 +34,13 @@ preview-phase errors in the note.** No Fatebound worktree was edited or committe
   its worktrees.
 - This RP worktree changes only API characterization tests, this report and the
   proposed Fatebound patch artifact. No RP `src/` runtime file changes.
-- Draft PR: pending creation; this report will be updated with its URL.
+- Draft PR: [dafuga/resource-provider #3](https://github.com/dafuga/resource-provider/pull/3),
+  open and draft, targeting `dev` (`7dfaddfa28aceb059652b8d777ad823fb452ac18`).
+- Verified code/test commit: `3516c602b7e75ce6f9fdc7936e0fa51bd4b27c1b`.
+  The follow-up commit only records this PR link and final evidence notes.
+- Pushed only `fix/rp-spurious-503` to `dafuga`; no primary/environment branch
+  was changed. The draft retains the supplied branch ancestry, including
+  `17a693d`, `fb2a10d` and `f98ff6d`, relative to `dev`.
 
 The brief's PR/deployment premise is stale. Read-only GitHub inspection on
 2026-11-15 found [dafuga/resource-provider PR #2](https://github.com/dafuga/resource-provider/pull/2)
@@ -244,7 +250,14 @@ loads the checked-in synthetic `test/.env.test`.
 | Final lint                                                          | Fails with seven existing errors: six in the supplied brief and one import-order error in src/lib/db/index.ts. Changed test/report lint and formatting pass.     |
 | `tsc --noEmit --tsBuildInfoFile /tmp/rp503-final.tsbuildinfo`       | Fails with the same nine pre-existing diagnostics as the starting revision; baseline and final output are byte-identical. No new diagnostic in the changed test. |
 | `bun build src/index.ts --compile --outfile /tmp/rp503-build/rpcli` | Passes. The compiled binary was not executed or deployed.                                                                                                        |
-| `git diff --check`                                                  | Passes.                                                                                                                                                          |
+| Source/report whitespace check                                      | Passes.                                                                                                                                                          |
+
+The source/report whitespace command is
+`git diff --check HEAD^ HEAD -- . ":(exclude)PROPOSED-FATEBOUND-503.patch"`.
+A full staged whitespace check flags the embedded unified diff's context-line
+spaces/tabs and empty context lines. Those are necessary patch syntax, preserved
+for review; the separate `git apply --check` against pristine Fatebound files
+passes. This is not a passing full-repo lint claim.
 
 The nine typecheck diagnostics are at
 `src/api/v2/lightaccount/request.ts:94`, `src/cli/manager/setup.ts:112`,
