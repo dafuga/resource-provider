@@ -14,7 +14,7 @@ export interface AccountHealthOptions {
 	// The account's CPU minimum in microseconds (min_ms * 1000).
 	minCpuUs: number;
 	// The account's powerup orders, for the lease-expiry check.
-	orders: PowerupOrder[];
+	orders?: PowerupOrder[];
 	now?: number;
 	alerts?: Alerts;
 	cpuGraceSeconds?: number;
@@ -49,18 +49,20 @@ export async function checkAccountHealth(
 	const alerts = options.alerts ?? defaultAlerts;
 	const who = options.role === 'payer' ? `payer ${account}` : account;
 
-	const leaseMinutes = options.leaseExpiryMinutes ?? ALERT_LEASE_EXPIRY_MINUTES;
-	const lease = getLeaseRenewals(options.orders, now, leaseMinutes);
-	const leaseKey = `lease-expiring:${account}`;
-	if (lease.cpuRequired || lease.netRequired) {
-		const kinds = [lease.cpuRequired && 'CPU', lease.netRequired && 'NET'].filter(Boolean);
-		await alerts.raise(
-			leaseKey,
-			`${who}: ${kinds.join('/')} lease expires within ${leaseMinutes} min and has not been renewed`,
-			{ account, role: options.role, cpu: lease.cpuRequired, net: lease.netRequired }
-		);
-	} else {
-		await alerts.resolve(leaseKey, `${who}: leases renewed`, { account });
+	if (options.orders) {
+		const leaseMinutes = options.leaseExpiryMinutes ?? ALERT_LEASE_EXPIRY_MINUTES;
+		const lease = getLeaseRenewals(options.orders, now, leaseMinutes);
+		const leaseKey = `lease-expiring:${account}`;
+		if (lease.cpuRequired || lease.netRequired) {
+			const kinds = [lease.cpuRequired && 'CPU', lease.netRequired && 'NET'].filter(Boolean);
+			await alerts.raise(
+				leaseKey,
+				`${who}: ${kinds.join('/')} lease expires within ${leaseMinutes} min and has not been renewed`,
+				{ account, role: options.role, cpu: lease.cpuRequired, net: lease.netRequired }
+			);
+		} else {
+			await alerts.resolve(leaseKey, `${who}: leases renewed`, { account });
+		}
 	}
 
 	const graceSeconds = options.cpuGraceSeconds ?? ALERT_CPU_GRACE_SECONDS;

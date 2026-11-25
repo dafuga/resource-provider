@@ -5,6 +5,7 @@ import { Static } from 'elysia';
 
 import { getManagerContext, type ManagerContext } from './context';
 import { manageAccountResources } from './manage/account';
+import { fundManagerPayer } from './manage/funding';
 
 import { managed } from '$api/v2/manager';
 import { v2ManagedAccountType } from '$api/v2/manager/types';
@@ -31,6 +32,7 @@ export interface ManagerCycleDeps {
 	getSession: () => Promise<Session>;
 	getContext: () => Promise<ManagerContext>;
 	getAccount: (account: string) => Promise<API.v1.AccountObject>;
+	fundPayer?: (payer: API.v1.AccountObject, alerts: Alerts) => Promise<void>;
 	getOrders: (account: string) => Promise<PowerupOrder[]>;
 	manageAccount: (
 		manager: Session,
@@ -56,13 +58,22 @@ export async function ensurePayerCanPay(
 	const actor = String(manager.actor);
 	const reserveUs = deps.payerReserveUs ?? MANAGER_PAYER_RESERVE_MS * 1000;
 	try {
-		const [data, orders] = await Promise.all([deps.getAccount(actor), deps.getOrders(actor)]);
+		const data = await deps.getAccount(actor);
+		const orders = await deps.getOrders(actor).catch(() => {
+			managerLog.warn('Payer lease lookup failed', { account: actor });
+			return undefined;
+		});
 		await checkAccountHealth(data, {
 			role: 'payer',
 			minCpuUs: deps.payerMinCpuUs ?? MANAGER_MIN_MS * 1000,
 			orders,
 			alerts
 		});
+		await deps.fundPayer?.(data, alerts).catch(() =>
+			alerts.raise(`payer-funding:${actor}`, `payer ${actor}: automatic top-up check failed`, {
+				account: actor
+			})
+		);
 		const status = deps.selfStatus?.();
 		if (status?.enabled) {
 			await checkSelfManagementHeartbeat(status.lastCompletedAt, status.startedAt, { alerts });
@@ -114,6 +125,7 @@ const defaultCycleDeps: ManagerCycleDeps = {
 	getContext: getManagerContext,
 	getAccount: (account) => getClient().v1.chain.get_account(account),
 	getOrders: getPowerupOrders,
+	fundPayer: fundManagerPayer,
 	manageAccount: manageAccountResources,
 	rescuePayer: () =>
 		getSelfManagementStatus().enabled ? runSelfManagementCheck() : Promise.resolve(),

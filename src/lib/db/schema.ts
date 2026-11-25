@@ -49,3 +49,17 @@ export const ramPurchases = sqliteTable(
 	},
 	(table) => [index('idx_ram_purchases_account_created').on(table.account, table.created_at)]
 );
+
+// Record attempted transfers before broadcast, so unknown outcomes still count against the cap.
+export const payerFunding = sqliteTable(
+	'payer_funding',
+	{
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		funder: text('funder').notNull(),
+		recipient: text('recipient').notNull(),
+		units: integer('units').notNull(),
+		reserved_at: integer('reserved_at').notNull(),
+		transaction_id: text('transaction_id')
+	},
+	(table) => [index('idx_payer_funding_source_time').on(table.funder, table.reserved_at)]
+);

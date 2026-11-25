@@ -189,6 +189,15 @@ Alerts are logged at error level (`ALERT: ...`) and, when `ALERT_WEBHOOK_URL` is
 | `self-stale`               | self-management has not completed a check for `ALERT_SELF_STALE_MINUTES`                                                      |
 | `self-verify`              | the startup account check keeps failing, or the permission/key is misconfigured                                               |
 | `ram-cap:<account>`        | a RAM top-up was skipped because of the account's daily RAM cap                                                               |
+| `payer-funding:<payer>`    | automatic funding is capped, cannot fund, or its transfer/readback fails                                                      |
+
+### Optional Jungle 4 payer funding
+
+Set `ALERT_WEBHOOK_URL` to a monitored webhook for delivery outside the service log. Set the alert threshold above the funding trigger so operators get an early warning. Size the reserve from recent fees and upcoming lease renewals.
+
+Automatic funding is disabled by default. With an approved, dedicated Jungle 4 funding account, link a separate permission to `eosio.token::transfer` and provision its key through the service's secret store. Set the account, permission and key using `MANAGER_PAYER_TOPUP_ACCOUNT`, `MANAGER_PAYER_TOPUP_PERMISSION` and `MANAGER_PAYER_TOPUP_PRIVATEKEY`. Set `MANAGER_PAYER_TOPUP_TRIGGER`, `MANAGER_PAYER_TOPUP_AMOUNT` and `MANAGER_PAYER_TOPUP_DAILY_CAP` as explicit assets such as `1.0000 EOS`. Set `ENABLE_MANAGER_PAYER_TOPUP=true` only after the source and limits are approved.
+
+The manager checks the configured payer's liquid balance before its CPU rescue. Below the trigger it can transfer the fixed amount from the funding account. Use one shared manager database. It reserves each attempt before sending, limits attempts to one every 15 minutes, and keeps unconfirmed transfers charged against the rolling 24-hour cap. An executed receipt and the payer's post-transfer balance are recorded in the service log.
 
 ## Running the Services
 

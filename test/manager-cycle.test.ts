@@ -93,6 +93,26 @@ describe('manager cycle with the payer out of CPU (Nov 14 12:07-16:29 UTC)', () 
 		expect(t.managed.length).toBe(3);
 	});
 
+	it('alerts about low payer balance and attempts funding before self-rescue when lease lookup fails', async () => {
+		const dry = accountData('rsfui4ahy.gm', { max: 0, used: 0 }, '0.0010 EOS');
+		const order: string[] = [];
+		const t = deps([dry], {
+			getOrders: async () => {
+				throw new Error('lease lookup unavailable');
+			},
+			fundPayer: async () => {
+				order.push('fund');
+			},
+			rescuePayer: async () => {
+				order.push('rescue');
+			}
+		});
+		await runManagerCycle(t.cycle);
+		expect(t.sent.map((payload) => payload.alert.key)).toContain('payer-balance:rsfui4ahy.gm');
+		expect(order).toEqual(['fund', 'rescue']);
+		expect(t.managed).toEqual([]);
+	});
+
 	it('alerts when self-management has stopped completing checks', async () => {
 		const healthy = accountData('rsfui4ahy.gm', { max: 38_813_031, used: 0 });
 		const t = deps([healthy], {

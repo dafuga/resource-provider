@@ -64,6 +64,13 @@
       "when": 1794690714998,
       "tag": "0008_ram_daily_cap",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1795602386970,
+      "tag": "0009_payer_funding",
+      "breakpoints": true
     }
   ]
 }
