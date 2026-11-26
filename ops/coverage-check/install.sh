@@ -12,7 +12,7 @@ release="$root/releases/$sha"
 relay="$HOME/.local/share/rp-alert-relay"
 mkdir -p "$release" "$HOME/.local/state/rp-coverage" "$relay"
 git -C "$repo" archive HEAD | tar -x -C "$release"
-(cd "$release" && "$HOME/.bun/bin/bun" install --frozen-lockfile --production >/dev/null)
+(cd "$release" && "$HOME/.bun/bin/bun" install --frozen-lockfile --production --ignore-scripts >/dev/null)
 echo "previous release: $(readlink "$root/current" || echo none)"
 ln -sfn "$release" "$root/current"
 for file in relay.py watch.py coverage_notify.py; do
