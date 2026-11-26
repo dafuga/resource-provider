@@ -26,7 +26,39 @@ import {
 	ramPurchaseAllowed,
 	ramWithinDailyCap
 } from '$lib/wharf/resources';
-import { ANTELOPE_SYSTEM_CONTRACT, MANAGED_ACCOUNT_RAM_MAX_FEE } from 'src/config';
+import {
+	ALERT_MANAGE_FAILURES,
+	ANTELOPE_SYSTEM_CONTRACT,
+	MANAGED_ACCOUNT_RAM_MAX_FEE
+} from 'src/config';
+
+const failures = new Map<string, number>();
+
+// One failed cycle is often a busy RPC; several in a row means the account is not being
+// kept resourced, so alert on that instead of on every miss.
+async function recordOutcome(name: string, ok: boolean, error?: string) {
+	const key = `manage-failed:${name}`;
+	if (ok) {
+		if (failures.has(name)) {
+			failures.delete(name);
+			await alerts.resolve(key, `${name}: resource top-ups working again`, { account: name });
+		}
+		return;
+	}
+	const count = (failures.get(name) ?? 0) + 1;
+	failures.set(name, count);
+	if (count >= ALERT_MANAGE_FAILURES) {
+		await alerts.raise(key, `${name}: ${count} resource top-up attempts in a row failed`, {
+			account: name,
+			failures: count,
+			error
+		});
+	}
+}
+
+export function resetManageFailures() {
+	failures.clear();
+}
 
 export async function manageAccountResources(
 	manager: Session,
@@ -112,9 +144,11 @@ export async function manageAccountResources(
 					'account management transaction failed with no result',
 					objectify({ managed, result })
 				);
+				await recordOutcome(name, false, 'no result');
 				return;
 			}
 			recordPowerup(name);
+			await recordOutcome(name, true);
 			if (ramPurchase) {
 				await ramPurchases.recordPurchase(name, ramPurchase.bytes, ramPurchase.cost);
 				await alerts.resolve(`ram-cap:${name}`, `${name}: RAM top-ups resumed`);
@@ -127,6 +161,7 @@ export async function manageAccountResources(
 				})
 			);
 		} else {
+			await recordOutcome(name, true);
 			managerLog.debug(
 				'no powerup required',
 				objectify({
@@ -136,5 +171,6 @@ export async function manageAccountResources(
 		}
 	} catch (error) {
 		managerLog.error('manageAccountResources failed', { account, error: String(error) });
+		await recordOutcome(String(account.account), false, String(error)).catch(() => undefined);
 	}
 }

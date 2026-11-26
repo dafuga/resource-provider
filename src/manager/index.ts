@@ -5,7 +5,7 @@ import { Static } from 'elysia';
 
 import { getManagerContext, type ManagerContext } from './context';
 import { manageAccountResources } from './manage/account';
-import { fundManagerPayer } from './manage/funding';
+import { fundManagedBalances, fundManagerPayer } from './manage/funding';
 
 import { managed } from '$api/v2/manager';
 import { v2ManagedAccountType } from '$api/v2/manager/types';
@@ -33,6 +33,8 @@ export interface ManagerCycleDeps {
 	getContext: () => Promise<ManagerContext>;
 	getAccount: (account: string) => Promise<API.v1.AccountObject>;
 	fundPayer?: (payer: API.v1.AccountObject, alerts: Alerts) => Promise<void>;
+	// Keeps the liquid EOS of accounts that pay for players (RAM payers) above their floor.
+	fundBalances?: (alerts: Alerts) => Promise<void>;
 	getOrders: (account: string) => Promise<PowerupOrder[]>;
 	manageAccount: (
 		manager: Session,
@@ -114,6 +116,13 @@ export async function runManagerCycle(deps: ManagerCycleDeps) {
 		);
 		return;
 	}
+	const alerts = deps.alerts ?? defaultAlerts;
+	await deps.fundBalances?.(alerts).catch((error) => {
+		managerLog.error('Managed balance top-up failed', { error: String(error) });
+		return alerts.raise('balance-funding:config', 'managed balance top-up check failed', {
+			error: String(error)
+		});
+	});
 	for (const account of managerContext.managedAccounts) {
 		managerLog.debug('Running resource management', objectify({ account }));
 		deps.manageAccount(manager, account, managerContext);
@@ -126,6 +135,7 @@ const defaultCycleDeps: ManagerCycleDeps = {
 	getAccount: (account) => getClient().v1.chain.get_account(account),
 	getOrders: getPowerupOrders,
 	fundPayer: fundManagerPayer,
+	fundBalances: fundManagedBalances,
 	manageAccount: manageAccountResources,
 	rescuePayer: () =>
 		getSelfManagementStatus().enabled ? runSelfManagementCheck() : Promise.resolve(),
