@@ -26,11 +26,23 @@ function git(args: string[]) {
 	return String(result.stdout);
 }
 
+function retry(read: () => void, attempts = 5) {
+	for (let attempt = 1; ; attempt++) {
+		try {
+			return read();
+		} catch (error) {
+			if (attempt >= attempts) throw error;
+			Bun.sleepSync(attempt * 2000);
+		}
+	}
+}
+
 function readRepo(repo: string): AppFile[] {
 	const dir = join(cache, `${repo.split('/')[1]}.git`);
 	const url = `https://github.com/${repo}.git`;
-	if (!existsSync(dir)) git(['clone', '-q', '--depth', '1', '--bare', url, dir]);
-	git(['-C', dir, 'fetch', '-q', '--depth', '1', url, 'HEAD']);
+	if (!existsSync(dir)) retry(() => git(['clone', '-q', '--depth', '1', '--bare', url, dir]));
+	// Under launchd the credential helper fails now and then, so the network read is retried.
+	retry(() => git(['-C', dir, 'fetch', '-q', '--depth', '1', url, 'HEAD']));
 	return git(['-C', dir, 'ls-tree', '-r', '--name-only', 'FETCH_HEAD'])
 		.split('\n')
 		.filter(isScannedFile)
