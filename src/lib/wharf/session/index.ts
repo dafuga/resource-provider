@@ -34,18 +34,36 @@ async function initSession(getAccount: () => Promise<ServiceAccountData>): Promi
 	return createSession(await getAccount());
 }
 
+// Cache the session, but never cache a failure: a transient error must not leave every later
+// call rejected for the life of the process.
+export function cacheSession(
+	current: Promise<Session> | null,
+	set: (value: Promise<Session> | null) => void,
+	getAccount: () => Promise<ServiceAccountData>
+): Promise<Session> {
+	if (current) return current;
+	const promise = initSession(getAccount).catch((error) => {
+		set(null);
+		throw error;
+	});
+	set(promise);
+	return promise;
+}
+
 export function getProviderSession(): Promise<Session> {
-	if (!providerSessionPromise) {
-		providerSessionPromise = initSession(() => providerAccount.getAccount());
-	}
-	return providerSessionPromise;
+	return cacheSession(
+		providerSessionPromise,
+		(value) => (providerSessionPromise = value),
+		() => providerAccount.getAccount()
+	);
 }
 
 export function getManagerSession(): Promise<Session> {
-	if (!managerSessionPromise) {
-		managerSessionPromise = initSession(() => managerAccount.getAccount());
-	}
-	return managerSessionPromise;
+	return cacheSession(
+		managerSessionPromise,
+		(value) => (managerSessionPromise = value),
+		() => managerAccount.getAccount()
+	);
 }
 
 export async function signTransaction(transaction: Transaction): Promise<Signature> {
