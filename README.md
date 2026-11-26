@@ -201,7 +201,14 @@ The manager checks the configured payer's liquid balance before its CPU rescue. 
 
 ### Keeping every app and game account covered (Jungle 4)
 
-`deploy/jungle4-managed-accounts.json` lists every account the RNG games and services rely on: the sponsor and RAM payers, the RAM gift account, oracle signers, keepers, contracts and QA actors. Enrol each row with `rpcli manager add` (run it from the service's working directory so the env file loads), and check the live chain with `bun scripts/coverage-readback.ts`, which exits non-zero when any account is below its floor.
+`deploy/jungle4-managed-accounts.json` lists every account the RNG games and services rely on: the sponsor and RAM payers, the RAM gift account, oracle signers, keepers, contracts and QA actors. Enrol each row with `rpcli manager add` (run it from the service's working directory so the env file loads). Each row records the role, who pays CPU, NET and RAM, the provider limits, any app CPU gate, and where its signing authority lives (place and permission name only, never key material).
+
+Adding an account: add its row here, enrol it, then run both checks. Neither signs or writes anything.
+
+- `bun scripts/coverage-check.ts` fails when the inventory and the provider's managed list differ (including weaker limits), when an account is below a floor or app gate, when the payer or a RAM payer is short of EOS, or when a lease would drop an account below its floor within 6 hours and auto-renew will not prevent it (not enrolled, payer dry, service down, or renewal overdue at 90 minutes). It reports each account's earliest lease expiry.
+- `bun scripts/scan-app-configs.ts` fails when a wrangler file, env file or app source in any repository listed under `appRepos` names an account that is not in the inventory. A repository it cannot read also fails. It is part of `make test`. Accounts held only in Worker secrets (`hiddenAccountNames`) cannot be seen by the scan.
+
+`ops/coverage-check/install.sh` schedules both on the primary Mac (`coverage_notify.py`, every 15 minutes, the scan hourly) and installs the alert relay from `ops/alert-relay/`. The relay delivers `lease-expiring` and `ram-cap` alerts at once, and `cpu-low` and `payer-dry` once they persist, and it reports a coverage check that has stopped running.
 
 Some accounts spend their own liquid EOS for players, such as RAM purchases by the sponsor payer. List them in `MANAGED_BALANCE_TOPUPS` as `account=trigger/amount/daily-cap`, for example `fbrampay.gm=150.0000 EOS/100.0000 EOS/300.0000 EOS`. Below the trigger the manager raises a `balance-low:<account>` alert. With `ENABLE_MANAGED_BALANCE_TOPUP=true` it transfers the amount from `MANAGED_BALANCE_TOPUP_ACCOUNT` (normally the payer) using `MANAGED_BALANCE_TOPUP_PERMISSION`. This must be a dedicated permission linked only to `eosio.token::transfer`, never owner or active. Its key goes in `MANAGED_BALANCE_TOPUP_PRIVATEKEY`. Each recipient has its own 15-minute cooldown and rolling 24-hour cap, recorded in the same ledger as payer funding.
 
