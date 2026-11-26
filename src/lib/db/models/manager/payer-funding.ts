@@ -7,7 +7,24 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const COOLDOWN_MS = 15 * 60 * 1000;
 
 export class PayerFundingLedger {
-	reserve(funder: string, recipient: string, units: number, dailyLimit: number, now: number) {
+	// By default the cooldown and rolling cap cover everything one funder sends. With
+	// `perRecipient` they are counted per funder and recipient pair, so one funder can keep
+	// several accounts topped up without one account's top-up blocking the others.
+	reserve(
+		funder: string,
+		recipient: string,
+		units: number,
+		dailyLimit: number,
+		now: number,
+		options: { perRecipient?: boolean } = {}
+	) {
+		const scope = options.perRecipient
+			? and(
+					eq(payerFunding.funder, funder),
+					eq(payerFunding.recipient, recipient),
+					gte(payerFunding.reserved_at, now - DAY_MS)
+				)
+			: and(eq(payerFunding.funder, funder), gte(payerFunding.reserved_at, now - DAY_MS));
 		return database.transaction(
 			(tx) => {
 				const totals = tx
@@ -16,7 +33,7 @@ export class PayerFundingLedger {
 						latest: sql<number | null>`max(${payerFunding.reserved_at})`
 					})
 					.from(payerFunding)
-					.where(and(eq(payerFunding.funder, funder), gte(payerFunding.reserved_at, now - DAY_MS)))
+					.where(scope)
 					.get();
 
 				if (totals?.latest != null && now - totals.latest < COOLDOWN_MS) {

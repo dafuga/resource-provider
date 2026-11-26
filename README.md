@@ -199,6 +199,14 @@ Automatic funding is disabled by default. With an approved, dedicated Jungle 4 f
 
 The manager checks the configured payer's liquid balance before its CPU rescue. Below the trigger it can transfer the fixed amount from the funding account. Use one shared manager database. It reserves each attempt before sending, limits attempts to one every 15 minutes, and keeps unconfirmed transfers charged against the rolling 24-hour cap. An executed receipt and the payer's post-transfer balance are recorded in the service log.
 
+### Keeping every app and game account covered (Jungle 4)
+
+`deploy/jungle4-managed-accounts.json` lists every account the RNG games and services rely on: the sponsor and RAM payers, the RAM gift account, oracle signers, keepers, contracts and QA actors. Enrol each row with `rpcli manager add` (run it from the service's working directory so the env file loads), and check the live chain with `bun scripts/coverage-readback.ts`, which exits non-zero when any account is below its floor.
+
+Some accounts spend their own liquid EOS for players, such as RAM purchases by the sponsor payer. List them in `MANAGED_BALANCE_TOPUPS` as `account=trigger/amount/daily-cap`, for example `fbrampay.gm=150.0000 EOS/100.0000 EOS/300.0000 EOS`. Below the trigger the manager raises a `balance-low:<account>` alert. With `ENABLE_MANAGED_BALANCE_TOPUP=true` it transfers the amount from `MANAGED_BALANCE_TOPUP_ACCOUNT` (normally the payer) using `MANAGED_BALANCE_TOPUP_PERMISSION`. This must be a dedicated permission linked only to `eosio.token::transfer`, never owner or active. Its key goes in `MANAGED_BALANCE_TOPUP_PRIVATEKEY`. Each recipient has its own 15-minute cooldown and rolling 24-hour cap, recorded in the same ledger as payer funding.
+
+When `ALERT_MANAGE_FAILURES` (default 6) top-up attempts in a row fail for one managed account, the manager raises `manage-failed:<account>`.
+
 ## Running the Services
 
 Start everything:

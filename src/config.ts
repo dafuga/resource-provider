@@ -275,5 +275,7 @@ export const ALERT_LEASE_EXPIRY_MINUTES = envNumber('ALERT_LEASE_EXPIRY_MINUTES'
 export const ALERT_CPU_GRACE_SECONDS = envNumber('ALERT_CPU_GRACE_SECONDS', 120);
 // Alert when the payer's liquid balance falls below this (system tokens). 0 disables.
 export const ALERT_PAYER_MIN_BALANCE = envNumber('ALERT_PAYER_MIN_BALANCE', 100);
+// Alert when this many resource top-ups in a row fail for one managed account.
+export const ALERT_MANAGE_FAILURES = envNumber('ALERT_MANAGE_FAILURES', 6);
 // Alert when self-management has not completed a check for this many minutes. 0 disables.
 export const ALERT_SELF_STALE_MINUTES = envNumber('ALERT_SELF_STALE_MINUTES', 5);
