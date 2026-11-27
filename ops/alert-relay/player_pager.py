@@ -2,12 +2,15 @@
 """Poll Tracker for P1 player alerts and retain acknowledgement and escalation receipts."""
 import argparse
 from datetime import datetime, timezone
+from functools import cache
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
+import sys
+from math import isfinite
 import time
 
 import watch
@@ -58,6 +61,98 @@ KEEPER_ALERT = re.compile(r"RNG (blackjack|craps|poker) keeper failing ")
 def frontier_time(payload, fallback):
     detected = re.search(r'"time"\s*:\s*"([^"]+)"', payload)
     return (timestamp(detected[1]) or fallback) if detected else fallback
+
+
+FRONTIER_ORIGIN = "https://rng-frontier.pages.dev"
+SPONSOR_ORIGIN = "https://rng-sponsor-jungle4.danielfugere28.workers.dev"
+CHAIN = "73e4385a2708e6d7048834fbc1079f2fabb17b3c125b146af438971e90716c4d"
+FRONTIER_URLS = {"release": FRONTIER_ORIGIN + "/version.json", "page": FRONTIER_ORIGIN + "/",
+                 "sponsor": SPONSOR_ORIGIN + "/health"}
+
+
+def public_get(url):
+    # curl bounds DNS, TLS and the entire body transfer. Ignore user config, proxies and redirects.
+    result = subprocess.run(["/usr/bin/curl", "-q", "--silent", "--noproxy", "*", "--max-time", "4",
+                             "--max-filesize", "262144", "--write-out", "\n%{http_code}", url],
+                            capture_output=True, timeout=5)
+    body, _, status = result.stdout.rpartition(b"\n")
+    return result.returncode, int(status) if status.isdigit() else 0, body
+
+
+def frontier_read(target):
+    url = FRONTIER_URLS[target]
+    try:
+        code, status, body = public_get(url)
+        if code:
+            # A busy/offline second observer is not independent confirmation. Check its egress
+            # before counting a second connect/DNS failure or deadline as an outage.
+            if code in (6, 7, 28) and os.getloadavg()[0] < (os.cpu_count() or 1):
+                control, control_status, _ = public_get("https://www.cloudflare.com/cdn-cgi/trace")
+                if control == 0 and control_status == 200:
+                    return "failed", f"unreachable (curl {code}, control HTTP 200)"
+            return "unknown", f"unavailable (curl {code})"
+        if status == 404 or 500 <= status <= 599:
+            return "failed", f"HTTP {status}"
+        if status != 200:
+            return "unknown", f"HTTP {status}"
+        if target == "page":
+            valid = b'id="game-canvas"' in body
+        else:
+            data = json.loads(body)
+            valid = isinstance(data, dict) and (data.get("ok") is True if target == "sponsor" else
+                    bool(re.fullmatch("[a-f0-9]{40}", str(data.get("commit")))) and
+                    data.get("chainId") == CHAIN and data.get("resourceProviderUrl") == SPONSOR_ORIGIN)
+        return ("healthy", "HTTP 200") if valid else ("failed", "HTTP 200 unexpected content")
+    except (ValueError, UnicodeError):
+        return "failed", "HTTP 200 invalid JSON"
+    except (OSError, subprocess.TimeoutExpired):
+        return "unknown", "observer unavailable"
+
+
+def frontier_fields(payload):
+    try:
+        data = json.loads(payload)
+    except (ValueError, TypeError):
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    # Store only fields used in the decision; Tracker may contain an old or truncated record.
+    return {k: data[k] for k in ("stage", "status", "reason", "reasons", "errorClass", "errorCode", "hostLoad",
+                                  "ok", "quoteRequestSent", "signRequestSent") if k in data}
+
+
+def frontier_verdict(channel, data, read=None):
+    stage = data.get("stage")
+    target = ("sponsor" if channel in ("quote", "sign", "budget") else
+              "release" if stage == "release_metadata" else "page")
+    outcome, detail = (read or frontier_read)(target)
+    load = data.get("hostLoad")
+    load = load if isinstance(load, dict) else {}
+
+    def numeric(key):
+        value = load.get(key)
+        return value if type(value) in (float, int) and 0 <= value < 1e7 and isfinite(value) else None
+
+    values = [numeric(k) for k in ("load1", "load5", "load15", "cpus")]
+    host = "/".join(str(v) if v is not None else "?" for v in values[:3])
+    # The source already applied its consecutive-failure gate. Only ambiguous timeouts need
+    # two observers. An explicit sponsor rejection keeps its original first eligible poll.
+    reasons = data.get("reasons")
+    timeout = (data.get("errorClass") == "timeout" or data.get("reason") == "browser_probe_timeout" or
+               data.get("errorCode") in ("TimeoutError", "ETIMEDOUT", "ERR_TIMED_OUT"))
+    cpu = values[3]
+    overloaded = not cpu or values[0] is None or max(v or 0 for v in values[:2]) >= cpu
+    if data.get("ok") is True:
+        confirmed = False  # Recovered before a refused failure notification was delivered.
+    elif channel == "budget":
+        confirmed = isinstance(reasons, list) and any(
+            r in ("sponsor_budget_exhausted", "sustained_http_429") for r in reasons)
+    elif channel == "heartbeat" or not data or (timeout and overloaded):
+        confirmed = outcome == "failed"
+    else:
+        confirmed = True
+    return {"tier": "p1" if confirmed else "warning",
+            "result": f"MB2 load {host} on {values[3] or '?'} CPUs; primary {target}: {detail}"}
 
 
 def recovery_index(item):
@@ -121,6 +216,8 @@ def ingest(state, items):
             event = events.setdefault(event_id, {
                 "item": item_id, "detected_at": at, "received_at": received_at, "summary": summary,
             })
+            if frontier:
+                event["frontier"] = frontier_fields(frontier[3])
             if key:
                 event["source_key"] = key
 
@@ -147,8 +244,9 @@ def ingest(state, items):
                     break
 
 
-def process(state, clock, cos, reflag, slack_dm, save):
+def process(state, clock, cos, reflag, slack_dm, save, record_evidence=None):
     failed = False
+    read_this_poll = cache(frontier_read)
     for event_id, event in list(state["events"].items()):
         if event.get("resolved"):
             continue
@@ -158,6 +256,25 @@ def process(state, clock, cos, reflag, slack_dm, save):
         item = event["item"]
         observed = datetime.fromtimestamp(event["detected_at"], tz=timezone.utc).isoformat(timespec="seconds")
         subject = f"{event['summary']} at {observed} on Tracker {item}"
+        if item in FRONTIER and event.get("source_key") in ("probe/page", "quote", "sign", "heartbeat", "budget"):
+            # A pre-upgrade pending page needs the same gate before its first escalation.
+            if paged_at is None or "frontier_receipt" not in event:
+                if ack is not None and paged_at is not None and ack <= paged_at + ACK_SECONDS:
+                    continue
+                verdict = frontier_verdict(event["source_key"], event.get("frontier", {}), read_this_poll)
+                event["evidence"] = verdict
+                if verdict["tier"] == "warning":
+                    if "cos_at" in event:
+                        del event["cos_at"]
+                    if "warning" not in event:
+                        if cos(f"Frontier monitor health warning. {subject}. {verdict['result']}"):
+                            event["warning"] = verdict["result"]
+                            save()
+                        else:
+                            failed = True
+                    continue
+                event["frontier_receipt"] = verdict["result"]
+            subject += ". " + event["frontier_receipt"]
         if paged_at is None:
             if ack is not None:
                 continue
@@ -192,6 +309,20 @@ def process(state, clock, cos, reflag, slack_dm, save):
             receipt = slack_dm(message)
             if receipt:
                 event["slack_receipt"] = receipt
+                save()
+            else:
+                failed = True
+
+    # Persist the actual second-vantage result beside the MB2 candidate. An unavailable
+    # Tracker write must not delay a page or require a second successful CoS delivery.
+    if record_evidence:
+        for event_id, event in state["events"].items():
+            evidence = event.get("evidence")
+            if not evidence or event.get("recorded_tier") == evidence["tier"]:
+                continue
+            message = f"Frontier {evidence['tier']} evidence {event_id}. {evidence['result']}"
+            if record_evidence(event["item"], message):
+                event["recorded_tier"] = evidence["tier"]
                 save()
             else:
                 failed = True
@@ -263,10 +394,19 @@ def reflag(item, message):
     return True
 
 
+def record_frontier_evidence(item, message):
+    command([TRACKER, "note", item, message])
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="Read Tracker and report counts without sending or saving.")
+    parser.add_argument("--frontier-vantage", choices=("probe/page", "quote", "sign", "heartbeat", "budget"))
     args = parser.parse_args()
+    if args.frontier_vantage:
+        print(json.dumps(frontier_verdict(args.frontier_vantage, frontier_fields(sys.stdin.read(4096)))))
+        return 0
     now = time.time()
     try:
         state = json.loads(STATE.read_text())
@@ -296,7 +436,8 @@ def main():
     # A Tracker read failure leaves the last state intact and exits nonzero.
     save()
     return 0 if process(state, time.time, attempt("CoS", deliver_to_cos),
-                        attempt("Tracker escalation", reflag), attempt("Slack DM", send_slack_page), save) else 1
+                        attempt("Tracker escalation", reflag), attempt("Slack DM", send_slack_page), save,
+                        attempt("Tracker evidence", record_frontier_evidence)) else 1
 
 
 if __name__ == "__main__":
