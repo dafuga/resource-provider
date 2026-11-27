@@ -75,7 +75,7 @@
 		},
 		{
 			"account": "pigracing.gm",
-			"usedBy": "Racing contract and keeper (@active); RAM grows ~4-5 EOS/day, daily RAM cap raised to 40 EOS on 26 Nov",
+			"usedBy": "Racing contract and keeper (@active); measured ~200 KB RAM/day (~45 EOS) on 26-27 Nov, daily RAM cap raised to 80 EOS on 27 Nov",
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 150,
@@ -83,7 +83,7 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 15,
 			"inc_ram_kb": 10,
-			"ram_daily_max_fee": 40
+			"ram_daily_max_fee": 80
 		},
 		{
 			"account": "rngbj.gm",
