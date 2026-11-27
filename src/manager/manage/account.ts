@@ -19,11 +19,11 @@ import { inPowerupCooldown, recordPowerup } from '$lib/wharf/cooldown';
 import { getPowerupOrders, getRequiredResourcesWithRenewals } from '$lib/wharf/leases';
 import {
 	estimateRamCost,
+	fitRamPurchase,
 	getPurchaseAmounts,
 	getRamDailyCap,
 	getRamMarket,
 	getRamPurchaseBytes,
-	ramPurchaseAllowed,
 	ramWithinDailyCap
 } from '$lib/wharf/resources';
 import {
@@ -107,35 +107,49 @@ export async function manageAccountResources(
 			actions.push(action);
 		}
 		if (requiredResources.ramRequired) {
-			const bytes = getRamPurchaseBytes(managed, data);
+			const wanted = Number(getRamPurchaseBytes(managed, data));
 			const market = await getRamMarket();
-			const cost = estimateRamCost(Number(bytes), market.base, market.quote);
+			const { bytes, cost } = fitRamPurchase(wanted, market.base, market.quote);
 			const dailyCap = getRamDailyCap(managed);
 			const spentLastDay = dailyCap > 0 ? await ramPurchases.getSpentLastDay(name) : 0;
-			if (!ramPurchaseAllowed(cost)) {
-				managerLog.warn('RAM purchase skipped: over MANAGED_ACCOUNT_RAM_MAX_FEE', {
-					account: name,
-					bytes: Number(bytes),
-					estimatedCost: Number.isFinite(cost) ? cost.toFixed(4) : 'n/a',
-					maxFee: MANAGED_ACCOUNT_RAM_MAX_FEE
-				});
+			if (bytes <= 0) {
+				const estimatedCost = estimateRamCost(wanted, market.base, market.quote);
+				await alerts.raise(
+					`ram-max-fee:${name}`,
+					`${name}: RAM top-up skipped; no part of ${wanted} bytes can be bought within MANAGED_ACCOUNT_RAM_MAX_FEE ${MANAGED_ACCOUNT_RAM_MAX_FEE}`,
+					{ account: name, bytes: wanted, estimatedCost, maxFee: MANAGED_ACCOUNT_RAM_MAX_FEE }
+				);
 			} else if (!ramWithinDailyCap(spentLastDay, cost, dailyCap)) {
 				// The payer funds every RAM top-up; a leaking account must not drain it
 				// (pigracing.gm cost ~53 EOS/day on Nov 13).
 				await alerts.raise(
 					`ram-cap:${name}`,
 					`${name}: RAM top-up skipped; ${spentLastDay.toFixed(4)} spent in the last 24h plus ${cost.toFixed(4)} would exceed its ${dailyCap} daily RAM cap`,
-					{ account: name, bytes: Number(bytes), spentLastDay, estimatedCost: cost, dailyCap }
+					{ account: name, bytes, spentLastDay, estimatedCost: cost, dailyCap }
 				);
 			} else {
-				const action = await makeBuyRamBytesAction(manager, managed.account, bytes);
+				if (bytes < wanted) {
+					managerLog.warn(
+						'RAM purchase reduced to fit MANAGED_ACCOUNT_RAM_MAX_FEE; later cycles buy the rest',
+						{
+							account: name,
+							bytes,
+							wantedBytes: wanted,
+							estimatedCost: cost.toFixed(4),
+							maxFee: MANAGED_ACCOUNT_RAM_MAX_FEE
+						}
+					);
+				}
+				const action = await makeBuyRamBytesAction(manager, managed.account, Int64.from(bytes));
 				managerLog.debug(
 					'buyrambytes action to perform',
 					objectify({ account: managed.account, action, bytes })
 				);
 				actions.push(action);
-				ramPurchase = { bytes: Number(bytes), cost };
+				ramPurchase = { bytes, cost };
 			}
+		} else {
+			await alerts.resolve(`ram-max-fee:${name}`, `${name}: RAM back above its minimum`);
 		}
 		if (actions.length) {
 			const result = await manager.transact({ actions });
@@ -152,6 +166,7 @@ export async function manageAccountResources(
 			if (ramPurchase) {
 				await ramPurchases.recordPurchase(name, ramPurchase.bytes, ramPurchase.cost);
 				await alerts.resolve(`ram-cap:${name}`, `${name}: RAM top-ups resumed`);
+				await alerts.resolve(`ram-max-fee:${name}`, `${name}: RAM top-ups resumed`);
 			}
 			managerLog.info(
 				'account management transaction successful',

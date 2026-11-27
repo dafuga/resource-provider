@@ -181,6 +181,28 @@ export function ramPurchaseAllowed(cost: number, maxFee = MANAGED_ACCOUNT_RAM_MA
 	return Number.isFinite(cost) && cost <= maxFee;
 }
 
+// The part of a wanted RAM purchase that fits the per-purchase max. An account far below its
+// floor gets the largest buy that fits, and later cycles buy the rest. bytes is 0 when nothing
+// can be bought (no budget, or the market could not be priced).
+export function fitRamPurchase(
+	wanted: number,
+	base: number,
+	quote: number,
+	maxFee = MANAGED_ACCOUNT_RAM_MAX_FEE
+): { bytes: number; cost: number } {
+	const nothing = { bytes: 0, cost: 0 };
+	if (!(base > 0 && quote > 0)) return nothing;
+	const cost = estimateRamCost(wanted, base, quote);
+	if (ramPurchaseAllowed(cost, maxFee)) return { bytes: wanted, cost };
+	// estimateRamCost solved for bytes.
+	const spend = maxFee / 1.005;
+	let bytes = Math.min(wanted, Math.floor((base * spend) / (quote + spend)));
+	// Floating point can land a hair over the max.
+	while (bytes > 0 && !ramPurchaseAllowed(estimateRamCost(bytes, base, quote), maxFee)) bytes--;
+	if (!(bytes > 0)) return nothing;
+	return { bytes, cost: estimateRamCost(bytes, base, quote) };
+}
+
 // The account's own rolling-24h RAM spend cap, or the default when it has none. 0 = no cap.
 export function getRamDailyCap(
 	managed: ManagedAccount,
