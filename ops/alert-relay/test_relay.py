@@ -48,10 +48,12 @@ class RelayTest(unittest.TestCase):
         keys, box = {}, Box()
         feed(keys, box, T, line("ALERT", "cpu-low:a.gm"), line("ALERT", "payer-dry:p.gm"),
              line("RESOLVED", "cpu-low:a.gm"), line("RESOLVED", "payer-dry:p.gm"))
-        self.assertEqual(len(box.flags), 2)
-        self.assertEqual(len(box.notes), 2)
-        self.assertIn("cpu-low:a.gm", box.flags[0])
-        self.assertIn("payer-dry:p.gm", box.flags[1])
+        self.assertEqual(box.flags, [])
+        self.assertEqual(len(box.notes), 4)
+        self.assertIn("cpu-low:a.gm", box.notes[0])
+        self.assertIn("payer-dry:p.gm", box.notes[2])
+        self.assertTrue(box.notes[0].startswith("[resolved replay] "))
+        self.assertIn("RESOLVED", box.notes[1])
 
     def test_repeated_log_lines_only_alert_once_per_episode(self):
         keys, box = {}, Box()
@@ -71,15 +73,15 @@ class RelayTest(unittest.TestCase):
 
     def test_refused_critical_alert_and_recovery_retry_in_order(self):
         keys, box, pending = {}, Box(ok=False), {}
-        feed(keys, box, T, line("ALERT", "cpu-low:a.gm"), line("RESOLVED", "cpu-low:a.gm"),
-             pending=pending)
+        feed(keys, box, T, line("ALERT", "cpu-low:a.gm"), pending=pending)
         self.assertEqual(len(box.flags), 1)
-        self.assertEqual(box.notes, [])
         self.assertEqual(len(pending), 1)
         box.ok = True
-        feed(keys, box, T + 300, pending=pending)
-        self.assertEqual(len(box.flags), 2)
-        self.assertEqual(len(box.notes), 1)
+        feed(keys, box, T + 300, line("RESOLVED", "cpu-low:a.gm"), pending=pending)
+        self.assertEqual(len(box.flags), 1)
+        self.assertEqual(len(box.notes), 2)
+        self.assertTrue(box.notes[0].startswith("[resolved replay] "))
+        self.assertIn("RESOLVED", box.notes[1])
         self.assertEqual(pending, {})
 
     def test_refused_flag_is_retried_until_it_lands(self):

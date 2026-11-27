@@ -1,7 +1,7 @@
 # Production player alerts
 
-CoS acknowledges each production player-path monitor event on Tracker within
-15 minutes, at any hour. The pager sends an immediate P1 prompt containing the
+CoS acknowledges each production player-path monitor page on Tracker within
+15 minutes of delivery to CoS, at any hour. The pager sends an immediate P1 prompt containing the
 event ID, the source Tracker item, and the exact acknowledgement command.
 Run the command as soon as receipt is confirmed, then triage the incident.
 A successful tmux send, a generic Tracker answer, or a recovery note does not
@@ -14,14 +14,17 @@ A note stays readable after the source posts a recovery or a different alert.
 Legacy flags can still be read while their question is active. Producers should
 use the note form if questions can be replaced or closed between polls.
 
-The provider relay publishes `cpu-low`, `payer-dry`, and `ram-cap` to `eha6tr`
-at the next journal poll, including episodes that clear within one poll. A
-journal repeat of the same open episode is suppressed. An alert and its
-subsequent recovery are delivered in order. The provider deadline starts at
-the journal event time. For other sources it starts at the monitor event or
-the Tracker note time, or first available flag update time for older producers.
+The provider relay publishes new `cpu-low`, `payer-dry`, and `ram-cap` episodes to
+`eha6tr` at the next journal poll. The relay records a full episode found in one
+journal batch as audit and recovery notes. A repeat of an open episode is
+suppressed. The pager matches recovery notes to the source key and occurrence
+time, and cancels any pending escalation when the incident is resolved. On
+activation, it admits new alerts, unpaired Provider episodes in the retained
+Tracker history, and active monitor questions. Unverified older notes are
+excluded.
 
-The pager polls every minute. At the first poll at or after the deadline it
+The pager polls every minute. It starts the deadline after a successful page
+to CoS. At the first poll at or after the deadline it
 records a fresh escalation with `tracker alert` on the same item and posts to
 Daniel's existing DM with dafuga's bot. Each leg retries independently and successful deliveries
 are recorded under `~/.local/state/player-pager.json`. Slack acceptance establishes
@@ -52,3 +55,9 @@ restoring code cannot resurrect old provider Slack dead-man receipts.
 Keep the Tracker task open until real Provider and Frontier alerts show the
 required receipts. A labeled rehearsal can verify plumbing without describing
 it as a real outage or forcing a production resource failure.
+
+Before activating or changing replay behavior, replay a startup backlog
+containing resolved and unresolved episodes and verify both the live journal
+and Tracker boundaries without sending pages. The verifier should confirm
+the resolved backlog produces no page and any eligible late-arriving event
+gets a full acknowledgement window from its first successful page.

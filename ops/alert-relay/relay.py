@@ -165,7 +165,11 @@ def send_critical(pending, notify):
     """Persist each successful operation and retry failed operations in order."""
     for event, messages in list(pending.items()):
         if "alert" in messages:
-            if not notify("alert", ITEM, messages["alert"]):
+            verb, message = "alert", messages["alert"]
+            if "recovery" in messages:
+                # A batch can contain a whole episode. Retain evidence without opening a P1.
+                verb, message = "note", message.replace("[P1 player] ", "[resolved replay] ", 1)
+            if not notify(verb, ITEM, message):
                 continue
             del messages["alert"]
         if "recovery" not in messages or notify("note", ITEM, messages["recovery"]):

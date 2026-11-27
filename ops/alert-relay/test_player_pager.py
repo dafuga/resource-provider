@@ -32,7 +32,7 @@ class PlayerPagerTest(unittest.TestCase):
                 return result
             return send
 
-        return pager.process(self.state, at, record("cos", cos), record("tracker", reflag),
+        return pager.process(self.state, lambda: at, record("cos", cos), record("tracker", reflag),
                              record("slack", dm), lambda: None)
 
     def incident(self):
@@ -49,11 +49,12 @@ class PlayerPagerTest(unittest.TestCase):
 
     def test_unacknowledged_even_after_transport_reflags_and_dms_at_deadline(self):
         event = self.incident()
-        self.run_at(T + 360)
-        self.run_at(T + pager.ACK_SECONDS - 1)
+        paged_at = T + 360
+        self.run_at(paged_at)
+        self.run_at(paged_at + pager.ACK_SECONDS - 1)
         self.assertEqual(len(self.calls), 1)
-        self.assertTrue(self.run_at(T + pager.ACK_SECONDS))
-        self.run_at(T + pager.ACK_SECONDS + 60)
+        self.assertTrue(self.run_at(paged_at + pager.ACK_SECONDS))
+        self.run_at(paged_at + pager.ACK_SECONDS + 60)
         self.assertEqual([action for action, _ in self.calls], ["cos", "tracker", "slack"])
         self.assertEqual(self.state["events"][event]["slack_receipt"], "123.456")
 
@@ -62,6 +63,7 @@ class PlayerPagerTest(unittest.TestCase):
         message = MESSAGE.replace("02:00:00Z", "12:00:00Z")
         pager.ingest(self.state, [inbox(note(pager.ALERT_NOTE + message, daytime))])
         event = next(iter(self.state["events"]))
+        self.assertTrue(self.run_at(daytime))
         self.assertFalse(self.run_at(daytime + pager.ACK_SECONDS, dm=False))
         pager.ingest(self.state, [inbox(note(f"P1 ACK {event}", daytime + pager.ACK_SECONDS + 1))])
         self.assertTrue(self.run_at(daytime + pager.ACK_SECONDS + 60))
