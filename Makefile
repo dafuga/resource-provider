@@ -29,7 +29,7 @@ run/manager: deps
 .PHONY: test
 test: deps clean/testdb
 	bun --env-file=./test/.env.test test
-	cd ops/alert-relay && python3 -B -m unittest test_relay test_watch
+	cd ops/alert-relay && python3 -B -m unittest discover -p 'test_*.py'
 	bun scripts/scan-app-configs.ts
 
 .PHONY: test/watch

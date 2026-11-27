@@ -30,6 +30,29 @@ Daniel's existing DM with dafuga's bot. Each leg retries independently and succe
 are recorded under `~/.local/state/player-pager.json`. Slack acceptance establishes
 a delivery receipt. CoS acknowledgement is recorded separately on Tracker.
 
+### Frontier evidence
+
+The 30-second Frontier relay and this 60-second pager each check from the primary
+Mac before delivering an alert. Both call the decision in `player_pager.py`.
+The relay uses the read-only `--frontier-vantage CHANNEL` command with the
+source JSON on stdin. Only fixed public URLs are contacted.
+
+For a timeout with MB2 one- or five-minute load at least equal to its CPU count
+(or missing load), an unconfirmed result produces a CoS monitor-health warning.
+The observer checks the failed public prerequisite: release metadata for the
+release step, the game shell for page and session steps, or sponsor health for
+quote and sign. A healthy shell or sponsor health response leaves later
+authenticated steps unverified. An independent HTTP failure or invalid response
+confirms an outage. A network failure requires working control egress and spare
+capacity on the second host. Explicit sponsor errors retain their existing SLA.
+Headroom warnings and already recovered notifications stay with CoS.
+
+The pager rechecks unresolved warnings each poll. It records MB2 load and the
+primary result beside the candidate on Tracker, and includes both in CoS and
+escalation messages. The acknowledgement timer starts with a successful P1
+delivery. Install this pager before the Frontier relay, then update the MB2
+producer. The previous pager cannot gate an overloaded producer's timeout.
+
 ## Activation on the primary Mac
 
 The Slack leg uses the existing dafuga's bot integration, app `A0CM7UBDKP0`.

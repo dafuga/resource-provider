@@ -153,3 +153,113 @@ class PlayerPagerTest(unittest.TestCase):
         )])
         self.assertTrue(self.run_at(T + 2000))
         self.assertEqual([action for action, _ in self.calls], ["cos"])
+
+class FrontierVantageTest(unittest.TestCase):
+    def test_recorded_overload_is_checked_and_warns_only_cos_until_confirmed(self):
+        payload = {"time": iso(T), "stage": "release_metadata", "durationMs": 8003,
+                   "quoteRequestSent": False, "signRequestSent": False, "errorClass": "timeout",
+                   "hostLoad": {"load1": 38.99, "load5": 45.19, "load15": 41.61, "cpus": 10}}
+        message = "Production Frontier Build Settlement probe/page failure " + pager.json.dumps(payload)
+        state = {"start": T - 60, "events": {}}
+        pager.ingest(state, [inbox(note(pager.ALERT_NOTE + message, T), id="jsx1zsn228")])
+        event = next(iter(state["events"].values()))
+        messages, escalations = [], []
+        def run(now):
+            def cos(message):
+                messages.append(message)
+                return True
+            return pager.process(state, lambda: now, cos, lambda _, msg: escalations.append(msg) or True,
+                                 lambda msg: escalations.append(msg) or "123.456", lambda: None)
+        with patch.object(pager, "frontier_read", return_value=("healthy", "HTTP 200")) as read:
+            self.assertTrue(run(T))
+            self.assertTrue(run(T + 960))
+            self.assertEqual(read.call_args.args[0], "release")
+        self.assertEqual(len(messages), 1)
+        self.assertIn("monitor health", messages[0].lower())
+        self.assertIn("38.99", messages[0])
+        self.assertIn("HTTP 200", messages[0])
+        self.assertNotIn("cos_at", event)
+        self.assertFalse(escalations)
+        with patch.object(pager, "frontier_read", return_value=("failed", "HTTP 503")):
+            self.assertTrue(run(T + 1020))
+        self.assertIn("P1 PROD PLAYER ALERT", messages[-1])
+        self.assertIn("HTTP 503", messages[-1])
+        self.assertEqual(event["cos_at"], T + 1020)
+        run(T + 1020 + pager.ACK_SECONDS)
+        self.assertEqual(len(escalations), 2)
+        self.assertTrue(all("HTTP 503" in message and "38.99" in message for message in escalations))
+
+    def test_indeterminate_peer_never_confirms_a_timeout_but_explicit_sign_denial_still_pages(self):
+        cases = [("probe/page", {"stage": "load", "errorClass": "timeout"}, False),
+                 ("quote", {"stage": "quote", "errorClass": "timeout"}, False),
+                 ("sign", {"stage": "sign", "status": 503}, True),
+                 ("heartbeat", {"reason": "missed_runs"}, False),
+                 ("budget", {"reasons": ["headroom.actor.ramUnits"]}, False),
+                 ("budget", {"reasons": ["sponsor_budget_exhausted"]}, True)]
+        for channel, payload, p1 in cases:
+            with self.subTest(channel=channel, payload=payload):
+                state = {"start": T, "events": {}}
+                message = f"Production Frontier Build Settlement {channel} failure " + pager.json.dumps(payload)
+                pager.ingest(state, [inbox(note(pager.ALERT_NOTE + message, T), id="jsx1zsn228")])
+                sent = []
+                with patch.object(pager, "frontier_read", return_value=("unknown", "unreachable")):
+                    pager.process(state, lambda: T, lambda msg: sent.append(msg) or True,
+                                  self.fail, self.fail, lambda: None)
+                self.assertEqual("P1 PROD PLAYER ALERT" in sent[0], p1)
+                self.assertIn("unreachable", sent[0])
+
+    def test_primary_http_observer_reads_content_and_distinguishes_failure_from_access_errors(self):
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+
+        class Response(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(self.server.status)
+                self.end_headers()
+                self.wfile.write(self.server.body)
+
+            def log_message(self, *unused):
+                pass
+
+        with HTTPServer(("127.0.0.1", 0), Response) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                with patch.dict(pager.FRONTIER_URLS, release=f"http://127.0.0.1:{server.server_port}/version.json"):
+                    server.body = pager.json.dumps({"commit": "a" * 40, "chainId": pager.CHAIN,
+                                                    "resourceProviderUrl": pager.SPONSOR_ORIGIN}).encode()
+                    for server.status, expected in [(200, "healthy"), (503, "failed"), (403, "unknown")]:
+                        self.assertEqual(pager.frontier_read("release")[0], expected)
+                    server.status, server.body = 200, b"<html>fallback</html>"
+                    self.assertEqual(pager.frontier_read("release")[0], "failed")
+            finally:
+                server.shutdown()
+                thread.join()
+
+    def test_two_network_deadlines_need_working_primary_egress_and_capacity(self):
+        with patch.object(pager.os, "getloadavg", return_value=(0, 0, 0)):
+            for control, expected in [((0, 200, b""), "failed"), ((28, 0, b""), "unknown")]:
+                with patch.object(pager, "public_get", side_effect=[(28, 0, b""), control]):
+                    self.assertEqual(pager.frontier_read("release")[0], expected)
+        with patch.object(pager.os, "getloadavg", return_value=(10000, 10000, 10000)), \
+                patch.object(pager, "public_get", return_value=(28, 0, b"")) as request:
+            self.assertEqual(pager.frontier_read("release")[0], "unknown")
+            self.assertEqual(request.call_count, 1)
+
+    def test_initial_confirmed_outage_and_tracker_receipt_retry_share_the_existing_paging_clock(self):
+        message = 'Production Frontier Build Settlement probe/page failure {"errorClass":"timeout","stage":"load"}'
+        state = {"start": T, "events": {}}
+        pager.ingest(state, [inbox(note(pager.ALERT_NOTE + message, T), id="jsx1zsn228")])
+        sent, notes = [], []
+        def record(_, evidence):
+            notes.append(evidence)
+            return len(notes) > 1
+        for now in (T, T + 60):
+            with patch.object(pager, "frontier_read", return_value=("failed", "HTTP 503")):
+                pager.process(state, lambda: now, lambda msg: sent.append(msg) or True, self.fail,
+                              self.fail, lambda: None, record)
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(next(iter(state["events"].values()))["cos_at"], T)
+        self.assertEqual(len(notes), 2)
+        self.assertIn("HTTP 503", notes[-1])
+        self.assertIn("p1 evidence", notes[-1])
