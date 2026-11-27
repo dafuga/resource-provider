@@ -110,3 +110,44 @@ class PlayerPagerTest(unittest.TestCase):
             self.assertEqual(slack.call_args.args, ("chat.postMessage", {
                 "channel": pager.SLACK_DM, "text": "test", "unfurl_links": False,
             }))
+
+    def test_replay_suppresses_three_resolved_episodes_and_gives_open_incident_full_ack_window(self):
+        activation = datetime(2026, 11, 27, 15, 55, tzinfo=timezone.utc).timestamp()
+        self.state["activation_at"] = activation
+        self.state["start"] = activation - 86400
+        replayed = (
+            ("payer-dry:rsfui4ahy.gm", "05:22:20.114", "05:22:30.057"),
+            ("ram-cap:pigracing.gm", "07:31:40.624", "07:58:31.024"),
+            ("cpu-low:rngfront.gm", "11:54:40.481", "11:57:40.391"),
+        )
+        notes = []
+        for key, fired, recovered in replayed:
+            notes.extend((
+                note(f"[resource-provider] RESOLVED 2026-11-27T{recovered}Z: cleared (key {key})",
+                     activation - 60),
+                note(f"{pager.ALERT_NOTE}[P1 player] [resource-provider] 2026-11-27T{fired}Z {key}: fired",
+                     activation + 5),
+            ))
+        # An earlier recovery for the same key cannot clear this later episode.
+        notes.append(note(f"{pager.ALERT_NOTE}[P1 player] [resource-provider] "
+                          "2026-11-27T15:53:00Z ram-cap:pigracing.gm: still active", activation - 120))
+        notes.append(note(f"{pager.ALERT_NOTE}[P1 player] old unverified event", activation - 60))
+        pager.ingest(self.state, [inbox(*notes)])
+        self.assertTrue(self.run_at(activation + 10))
+        self.assertEqual([action for action, _ in self.calls], ["cos"])
+        event = next(iter(self.state["events"]))
+        self.assertIn("ram-cap:pigracing.gm", self.calls[0][1][0])
+        self.assertTrue(self.run_at(activation + 909))
+        self.assertEqual(len(self.calls), 1)
+        self.assertTrue(self.run_at(activation + 910))
+        self.assertEqual([action for action, _ in self.calls], ["cos", "tracker", "slack"])
+
+    def test_recovery_arriving_after_page_cancels_pending_escalation(self):
+        self.incident()
+        self.assertTrue(self.run_at(T + 310))
+        pager.ingest(self.state, [inbox(
+            note(pager.ALERT_NOTE + MESSAGE, T + 300),
+            note("[resource-provider] RESOLVED 2026-11-27T02:06:00Z: cleared (key cpu-low:test.gm)", T + 360),
+        )])
+        self.assertTrue(self.run_at(T + 2000))
+        self.assertEqual([action for action, _ in self.calls], ["cos"])
