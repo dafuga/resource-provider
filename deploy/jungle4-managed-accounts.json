@@ -182,7 +182,7 @@
 		{
 			"account": "pigracing.gm",
 			"role": "contract",
-			"usedBy": "Racing contract and keeper (@active); uses ~43 KB RAM/day, daily RAM cap raised to 40 EOS on 26 Nov (cxvh89)",
+			"usedBy": "Racing contract and keeper (@active); measured ~200 KB RAM/day (~45 EOS) on 26-27 Nov, daily RAM cap raised to 80 EOS on 27 Nov (eha6tr)",
 			"pays": {
 				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
 				"ram": "provider payer rsfui4ahy.gm (buyrambytes below min_ram_kb)"
@@ -194,7 +194,7 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 15,
 			"inc_ram_kb": 10,
-			"ram_daily_max_fee": 40,
+			"ram_daily_max_fee": 80,
 			"authority": [
 				{
 					"permission": "active",
