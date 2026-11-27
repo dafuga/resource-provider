@@ -92,6 +92,7 @@ The values required for this command are as follows:
 - `max_fee` the maximum fee to pay for the powerup action
 - `min_ram_kb` / `inc_ram_kb` (optional, needs `ENABLE_MANAGED_ACCOUNT_RAM=true`) buy `inc_ram_kb` of RAM when free RAM falls below `min_ram_kb`
 - `ram_daily_max_fee` (optional) cap on the estimated RAM spend for this account per rolling 24 hours, in system tokens. `0` uses `MANAGED_ACCOUNT_RAM_DAILY_MAX_FEE` (no cap by default). Purchases are recorded in the database, so the cap survives restarts. A skipped top-up raises a `ram-cap` alert.
+- `MANAGED_ACCOUNT_RAM_MAX_FEE` (default 5) caps each single RAM purchase. When the deficit would cost more, the manager buys what fits and buys the rest in later cycles (one per `MANAGER_POWERUP_COOLDOWN_SECONDS`); the daily cap still applies to the total. If nothing fits, it raises a `ram-max-fee` alert
 
 So for example, to ensure the `ihasnocpunet` account always has 10ms and 10kb resources available, and setting the maximum fee to `0.5000 TOKEN`, the command would be:
 
@@ -189,6 +190,7 @@ Alerts are logged at error level (`ALERT: ...`) and, when `ALERT_WEBHOOK_URL` is
 | `self-stale`               | self-management has not completed a check for `ALERT_SELF_STALE_MINUTES`                                                      |
 | `self-verify`              | the startup account check keeps failing, or the permission/key is misconfigured                                               |
 | `ram-cap:<account>`        | a RAM top-up was skipped because of the account's daily RAM cap                                                               |
+| `ram-max-fee:<account>`    | RAM is needed but no part of the top-up can be bought within `MANAGED_ACCOUNT_RAM_MAX_FEE`                                    |
 | `payer-funding:<payer>`    | automatic funding is capped, cannot fund, or its transfer/readback fails                                                      |
 
 ### Optional Jungle 4 payer funding

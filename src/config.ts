@@ -43,7 +43,8 @@ export const MANAGER_RENEW_BEFORE_EXPIRY_MINUTES = process.env.MANAGER_RENEW_BEF
 export const ENABLE_MANAGED_ACCOUNT_RAM = isENVTrue(
 	process.env.ENABLE_MANAGED_ACCOUNT_RAM ?? 'false'
 );
-// Maximum estimated cost (in system tokens) of a single managed-account RAM purchase.
+// Maximum estimated cost (in system tokens) of a single managed-account RAM purchase. A bigger
+// deficit is bought in several purchases of at most this size, one per cooldown period.
 export const MANAGED_ACCOUNT_RAM_MAX_FEE = process.env.MANAGED_ACCOUNT_RAM_MAX_FEE
 	? Number(process.env.MANAGED_ACCOUNT_RAM_MAX_FEE)
 	: 5;
