@@ -24,55 +24,63 @@ class Box:
         return self.ok
 
 
-def feed(keys, box, now, *lines):
-    relay.apply_lines(keys, lines, now, box.note)
+def feed(keys, box, now, *lines, pending=None):
+    if pending is None:
+        pending = {}
+    relay.apply_lines(keys, lines, now, box.note, pending)
     relay.send_due(keys, now, box.flag)
+    relay.send_critical(pending, lambda verb, item, message: (
+        item == "eha6tr" and (box.flag if verb == "alert" else box.note)(message)
+    ))
 
 
 class RelayTest(unittest.TestCase):
-    def test_lease_expiring_and_ram_cap_are_delivered_at_once_in_one_flag(self):
+    def test_lease_expiring_and_ram_cap_reach_the_inbox(self):
         keys, box = {}, Box()
         feed(keys, box, T, line("ALERT", "lease-expiring:fbrampay.gm"),
              line("ALERT", "ram-cap:pigracing.gm"))
-        self.assertEqual(len(box.flags), 1)
+        self.assertEqual(len(box.flags), 2)
         self.assertIn("lease-expiring:fbrampay.gm", box.flags[0])
-        self.assertIn("ram-cap:pigracing.gm", box.flags[0])
+        self.assertTrue(box.flags[1].startswith("[P1 player] "))
+        self.assertIn("ram-cap:pigracing.gm", box.flags[1])
 
-    def test_flapping_cpu_low_and_payer_dry_stay_quiet(self):
+    def test_short_cpu_and_payer_outages_survive_one_batched_journal_read(self):
         keys, box = {}, Box()
-        for i in range(6):
-            now = T + i * 300
-            feed(keys, box, now, line("ALERT", "cpu-low:a.gm"), line("ALERT", "payer-dry:p.gm"))
-            feed(keys, box, now + 60, line("RESOLVED", "cpu-low:a.gm"),
-                 line("RESOLVED", "payer-dry:p.gm"))
-        self.assertEqual((box.flags, box.notes), ([], []))
+        feed(keys, box, T, line("ALERT", "cpu-low:a.gm"), line("ALERT", "payer-dry:p.gm"),
+             line("RESOLVED", "cpu-low:a.gm"), line("RESOLVED", "payer-dry:p.gm"))
+        self.assertEqual(len(box.flags), 2)
+        self.assertEqual(len(box.notes), 2)
+        self.assertIn("cpu-low:a.gm", box.flags[0])
+        self.assertIn("payer-dry:p.gm", box.flags[1])
 
-    def test_persisting_cpu_low_and_payer_dry_are_delivered(self):
+    def test_repeated_log_lines_only_alert_once_per_episode(self):
         keys, box = {}, Box()
         both = (line("ALERT", "cpu-low:a.gm"), line("ALERT", "payer-dry:p.gm"))
         feed(keys, box, T, *both)
-        feed(keys, box, T + 300)
-        self.assertEqual(box.flags, [])
         feed(keys, box, T + 1800, *both)
-        self.assertEqual(len(box.flags), 1)
-        self.assertIn("cpu-low:a.gm", box.flags[0])
-        feed(keys, box, T + 2100, line("RESOLVED", "cpu-low:a.gm"))
-        self.assertEqual(len(box.notes), 1)
-
-    def test_flapping_ram_cap_is_flagged_at_most_every_six_hours(self):
-        keys, box = {}, Box()
-        for i in range(6):
-            feed(keys, box, T + i * 600, line("ALERT", "ram-cap:pigracing.gm"))
-            feed(keys, box, T + i * 600 + 300, line("RESOLVED", "ram-cap:pigracing.gm"))
-        self.assertEqual((len(box.flags), len(box.notes)), (1, 1))
-        feed(keys, box, T + 7 * HOUR, line("ALERT", "ram-cap:pigracing.gm"))
         self.assertEqual(len(box.flags), 2)
 
-    def test_alert_forgotten_by_a_restart_is_not_delivered_as_persisting(self):
+    def test_new_ram_cap_episode_inside_six_hours_reaches_the_inbox(self):
         keys, box = {}, Box()
-        feed(keys, box, T, line("ALERT", "cpu-low:a.gm"))
-        feed(keys, box, T + 3 * HOUR)
-        self.assertEqual(box.flags, [])
+        feed(keys, box, T, line("ALERT", "ram-cap:pigracing.gm"))
+        feed(keys, box, T + 300, line("RESOLVED", "ram-cap:pigracing.gm"))
+        feed(keys, box, T + 600,
+             line("ALERT", "ram-cap:pigracing.gm", at="2026-11-26T12:10:00+0000"))
+        self.assertEqual((len(box.flags), len(box.notes)), (2, 1))
+        self.assertNotEqual(box.flags[0], box.flags[1])
+
+    def test_refused_critical_alert_and_recovery_retry_in_order(self):
+        keys, box, pending = {}, Box(ok=False), {}
+        feed(keys, box, T, line("ALERT", "cpu-low:a.gm"), line("RESOLVED", "cpu-low:a.gm"),
+             pending=pending)
+        self.assertEqual(len(box.flags), 1)
+        self.assertEqual(box.notes, [])
+        self.assertEqual(len(pending), 1)
+        box.ok = True
+        feed(keys, box, T + 300, pending=pending)
+        self.assertEqual(len(box.flags), 2)
+        self.assertEqual(len(box.notes), 1)
+        self.assertEqual(pending, {})
 
     def test_refused_flag_is_retried_until_it_lands(self):
         keys, box = {}, Box(ok=False)
