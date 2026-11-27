@@ -1,9 +1,15 @@
 {
-	"_comment": "Every Jungle 4 account Daniel's apps and games rely on (cxvh89, 26 Nov 2026). Each row is enrolled with `rpcli manager add <account> <min_ms> <min_kb> <inc_ms> <inc_kb> <max_fee> <min_ram_kb> <inc_ram_kb> <ram_daily_max_fee>`; balance rows go in MANAGED_BALANCE_TOPUPS. Players are not listed: their CPU/NET is paid by fbrampay.gm through the sponsor Worker and their RAM by fbrampay.gm or rammgrtest11.",
+	"_comment": "Every Jungle 4 account Daniel's apps and games rely on (cxvh89, 26 Nov 2026). Each row is enrolled with `rpcli manager add <account> <min_ms> <min_kb> <inc_ms> <inc_kb> <max_fee> <min_ram_kb> <inc_ram_kb> <ram_daily_max_fee>`; balance rows go in MANAGED_BALANCE_TOPUPS. Players are not listed: their CPU/NET is paid by fbrampay.gm through the sponsor Worker and their RAM by fbrampay.gm or rammgrtest11. This file is the single inventory (3vhnkz): scripts/coverage-check.ts compares it with the live provider list and the chain, and scripts/scan-app-configs.ts fails on any app config account missing from it. Signing authority entries name a place and permission only; never add key material. Live values such as each account's earliest lease expiry are reported by the coverage check, not stored here.",
 	"managed": [
 		{
 			"account": "fbrampay.gm",
+			"role": "sponsor and RAM payer",
 			"usedBy": "rng-sponsor-jungle4 Worker (@txsponsor noop + buyram), Fatebound RAM payer (@active), ram-provider simulation payer",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "provider payer rsfui4ahy.gm (buyrambytes below min_ram_kb)",
+				"players_ram": "this account, from its own EOS (kept above balanceTopups)"
+			},
 			"min_ms": 250,
 			"min_kb": 64,
 			"inc_ms": 500,
@@ -11,11 +17,45 @@
 			"max_fee": "1.0000 EOS",
 			"min_ram_kb": 4,
 			"inc_ram_kb": 10,
-			"ram_daily_max_fee": 2
+			"ram_daily_max_fee": 10,
+			"gates": [
+				{
+					"cpu_us": 30000,
+					"source": "ram-provider src/adapters/SponsorChainAdapter.ts MIN_CPU_US (sponsor Worker refuses below this)"
+				},
+				{
+					"cpu_us": 100000,
+					"source": "rng-fatebound src/lib/server/resource-ram.ts MIN_CPU_US (Fatebound RAM payer refuses below this)"
+				}
+			],
+			"authority": [
+				{
+					"permission": "owner/active",
+					"location": "local WharfKit wallet on the primary Mac (verified hcmfy0, cxvh89)"
+				},
+				{
+					"permission": "active",
+					"location": "rng-fatebound Pages secret ANTELOPE_RAM_PAYER_PRIVATE_KEY (the app requires an active-permission key)"
+				},
+				{
+					"permission": "txsponsor",
+					"location": "Cloudflare Worker rng-sponsor-jungle4 secret SPONSOR_KEY"
+				},
+				{
+					"permission": "txpreview",
+					"location": "preview sponsor Worker (ram-provider wrangler.sponsor.preview.toml) secret SPONSOR_KEY"
+				}
+			]
 		},
 		{
 			"account": "rammgrtest11",
+			"role": "legacy RAM Worker payer (RAM gifts)",
 			"usedBy": "ram-provider-jungle4 Worker RAM gifts (@ramgift)",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "not auto-bought",
+				"players_ram": "this account, from its own EOS (kept above balanceTopups)"
+			},
 			"min_ms": 10,
 			"min_kb": 10,
 			"inc_ms": 20,
@@ -23,11 +63,26 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 0,
 			"inc_ram_kb": 0,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "ramgift",
+					"location": "Cloudflare Worker ram-provider-jungle4 secret RAM_PRIVATE_KEY"
+				},
+				{
+					"permission": "owner/active",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "5ip24l2kc.gm",
+			"role": "oracle signer",
 			"usedBy": "RNG oracle signer @2 (GCP rng-oracle@2)",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "not auto-bought"
+			},
 			"min_ms": 5000,
 			"min_kb": 500,
 			"inc_ms": 20000,
@@ -35,11 +90,22 @@
 			"max_fee": "3.0000 EOS",
 			"min_ram_kb": 0,
 			"inc_ram_kb": 0,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "active",
+					"location": "GCP rng-oracle@2 service configuration (oracle signer @2); exact permission not verified"
+				}
+			]
 		},
 		{
 			"account": "rngoracle.gm",
+			"role": "contract",
 			"usedBy": "RNG oracle contract (cycle RAM)",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "not auto-bought"
+			},
 			"min_ms": 20,
 			"min_kb": 5,
 			"inc_ms": 50,
@@ -47,11 +113,22 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 0,
 			"inc_ram_kb": 0,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "any",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "fatebound.gm",
+			"role": "contract",
 			"usedBy": "Fatebound contract and @resource player cosigner",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "provider payer rsfui4ahy.gm (buyrambytes below min_ram_kb)"
+			},
 			"min_ms": 50,
 			"min_kb": 20,
 			"inc_ms": 100,
@@ -59,11 +136,30 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 20,
 			"inc_ram_kb": 10,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "resource",
+					"location": "rng-fatebound Pages secret ANTELOPE_RESOURCE_PROVIDER_PRIVATE_KEY (inferred from the secret name)"
+				},
+				{
+					"permission": "payments",
+					"location": "rng-fatebound Pages secret ANTELOPE_PAYMENT_PRIVATE_KEY (inferred from the secret name)"
+				},
+				{
+					"permission": "owner/active",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "rngfront.gm",
+			"role": "contract",
 			"usedBy": "Frontier contract and @keeper Worker",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "provider payer rsfui4ahy.gm (buyrambytes below min_ram_kb)"
+			},
 			"min_ms": 200,
 			"min_kb": 20,
 			"inc_ms": 150,
@@ -71,11 +167,26 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 20,
 			"inc_ram_kb": 10,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "keeper",
+					"location": "rng-frontier keeper Worker secret KEEPER_PRIVATE_KEY"
+				},
+				{
+					"permission": "owner/active/billing/txpass",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "pigracing.gm",
-			"usedBy": "Racing contract and keeper (@active); RAM grows ~4-5 EOS/day, cap raised 5->10 EOS on 26 Nov",
+			"role": "contract",
+			"usedBy": "Racing contract and keeper (@active); measured ~200 KB RAM/day (~45 EOS) on 26-27 Nov, daily RAM cap raised to 80 EOS on 27 Nov (eha6tr)",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "provider payer rsfui4ahy.gm (buyrambytes below min_ram_kb)"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 150,
@@ -83,11 +194,26 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 15,
 			"inc_ram_kb": 10,
-			"ram_daily_max_fee": 10
+			"ram_daily_max_fee": 80,
+			"authority": [
+				{
+					"permission": "active",
+					"location": "rng-racing-finalizer Worker secret FINALIZER_PRIVATE_KEY (account and permission are Worker secrets)"
+				},
+				{
+					"permission": "owner",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "rngbj.gm",
+			"role": "contract",
 			"usedBy": "Blackjack contract and @keeper",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "provider payer rsfui4ahy.gm (buyrambytes below min_ram_kb)"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 10,
@@ -95,11 +221,26 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 20,
 			"inc_ram_kb": 10,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "keeper",
+					"location": "rng-blackjack keeper Worker secret KEEPER_PRIVATE_KEY"
+				},
+				{
+					"permission": "owner/active",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "rngcraps.gm",
+			"role": "contract",
 			"usedBy": "Craps contract and @keeper",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "provider payer rsfui4ahy.gm (buyrambytes below min_ram_kb)"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 10,
@@ -107,11 +248,26 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 20,
 			"inc_ram_kb": 10,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "keeper",
+					"location": "rng-craps keeper Worker secret KEEPER_PRIVATE_KEY"
+				},
+				{
+					"permission": "owner/active",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "rngpoker.gm",
+			"role": "contract",
 			"usedBy": "Poker contract",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "provider payer rsfui4ahy.gm (buyrambytes below min_ram_kb)"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 10,
@@ -119,11 +275,22 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 20,
 			"inc_ram_kb": 10,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "any",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "rngcards.gm",
+			"role": "contract",
 			"usedBy": "Card Duel contract",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "provider payer rsfui4ahy.gm (buyrambytes below min_ram_kb)"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 10,
@@ -131,11 +298,22 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 20,
 			"inc_ram_kb": 10,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "any",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "piglotto.gm",
+			"role": "contract",
 			"usedBy": "Lottery contract",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "provider payer rsfui4ahy.gm (buyrambytes below min_ram_kb)"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 10,
@@ -143,11 +321,22 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 20,
 			"inc_ram_kb": 10,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "any",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "pigcare.gm",
+			"role": "contract",
 			"usedBy": "Pig Care contract",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "provider payer rsfui4ahy.gm (buyrambytes below min_ram_kb)"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 10,
@@ -155,11 +344,22 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 20,
 			"inc_ram_kb": 10,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "any",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "tamogochi.gm",
+			"role": "contract",
 			"usedBy": "Tamagotchi contract",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "provider payer rsfui4ahy.gm (buyrambytes below min_ram_kb)"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 10,
@@ -167,23 +367,45 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 20,
 			"inc_ram_kb": 10,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "any",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "tamagochi.gm",
+			"role": "contract",
 			"usedBy": "Tamagotchi legacy contract",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "provider payer rsfui4ahy.gm (buyrambytes below min_ram_kb)"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 10,
 			"inc_kb": 10,
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 700,
-			"inc_ram_kb": 700,
-			"ram_daily_max_fee": 0
+			"inc_ram_kb": 10,
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "any",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "rngpokemon12",
+			"role": "contract",
 			"usedBy": "Pokemon contract",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "provider payer rsfui4ahy.gm (buyrambytes below min_ram_kb)"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 10,
@@ -191,11 +413,22 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 20,
 			"inc_ram_kb": 10,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "any",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "aethroll.gm",
+			"role": "contract",
 			"usedBy": "Aetherroll contract",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "provider payer rsfui4ahy.gm (buyrambytes below min_ram_kb)"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 10,
@@ -203,11 +436,22 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 20,
 			"inc_ram_kb": 10,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "any",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "lanecards.gm",
+			"role": "contract",
 			"usedBy": "Lane Card Battler contract",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "provider payer rsfui4ahy.gm (buyrambytes below min_ram_kb)"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 10,
@@ -215,11 +459,22 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 20,
 			"inc_ram_kb": 10,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "any",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "chainmate.gm",
+			"role": "contract",
 			"usedBy": "Chainmate contract",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "provider payer rsfui4ahy.gm (buyrambytes below min_ram_kb)"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 10,
@@ -227,11 +482,22 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 20,
 			"inc_ram_kb": 10,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "any",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "dappregis.gm",
+			"role": "contract",
 			"usedBy": "dApp registry (achievements) contract",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "provider payer rsfui4ahy.gm (buyrambytes below min_ram_kb)"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 10,
@@ -239,11 +505,22 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 20,
 			"inc_ram_kb": 10,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "any",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "shipload.gm",
+			"role": "contract",
 			"usedBy": "Shipload contract (@oracle)",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "provider payer rsfui4ahy.gm (buyrambytes below min_ram_kb)"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 10,
@@ -251,11 +528,22 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 20,
 			"inc_ram_kb": 10,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "any",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "gamepass.gm",
+			"role": "contract",
 			"usedBy": "Game Pass contract",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "not auto-bought"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 10,
@@ -263,11 +551,22 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 0,
 			"inc_ram_kb": 0,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "any",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "frnttreas.gm",
+			"role": "treasury",
 			"usedBy": "Frontier treasury",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "not auto-bought"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 10,
@@ -275,11 +574,22 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 0,
 			"inc_ram_kb": 0,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "any",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "pokerbot.gm",
+			"role": "bot player",
 			"usedBy": "Poker bot player",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "not auto-bought"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 10,
@@ -287,11 +597,22 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 0,
 			"inc_ram_kb": 0,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "any",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "yvcpg2lnc.gm",
+			"role": "qa actor",
 			"usedBy": "QA canary actor (Blackjack/Lottery/Poker/Craps)",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "not auto-bought"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 10,
@@ -299,11 +620,22 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 0,
 			"inc_ram_kb": 0,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "any",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "frntqa222.gm",
+			"role": "qa actor",
 			"usedBy": "QA canary actor",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "not auto-bought"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 10,
@@ -311,11 +643,22 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 0,
 			"inc_ram_kb": 0,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "any",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "frntqa2.gm",
+			"role": "qa actor",
 			"usedBy": "QA canary actor (Poker/Card)",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "not auto-bought"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 10,
@@ -323,11 +666,22 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 0,
 			"inc_ram_kb": 0,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "any",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "fateqa.gm",
+			"role": "qa actor",
 			"usedBy": "Fatebound QA actor",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "not auto-bought"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 10,
@@ -335,11 +689,22 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 0,
 			"inc_ram_kb": 0,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "any",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "qorplay1.gm",
+			"role": "qa actor",
 			"usedBy": "Fatebound QA actor",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "not auto-bought"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 10,
@@ -347,11 +712,22 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 0,
 			"inc_ram_kb": 0,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "any",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "fbqa2run.gm",
+			"role": "qa actor",
 			"usedBy": "Fatebound/Aetherroll QA actor",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "not auto-bought"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 10,
@@ -359,11 +735,22 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 0,
 			"inc_ram_kb": 0,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "any",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "fbqa4run.gm",
+			"role": "qa actor",
 			"usedBy": "Fatebound/Aetherroll QA actor",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "not auto-bought"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 10,
@@ -371,11 +758,22 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 0,
 			"inc_ram_kb": 0,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "any",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "osqj2xldy.gm",
+			"role": "other managed",
 			"usedBy": "existing managed account (pre-cxvh89)",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "provider payer rsfui4ahy.gm (buyrambytes below min_ram_kb)"
+			},
 			"min_ms": 1000,
 			"min_kb": 100,
 			"inc_ms": 1000,
@@ -383,11 +781,22 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 20,
 			"inc_ram_kb": 10,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "any",
+					"location": "not recorded"
+				}
+			]
 		},
 		{
 			"account": "ilgu5pebf.gm",
+			"role": "other managed",
 			"usedBy": "existing managed account (pre-cxvh89)",
+			"pays": {
+				"cpu_net": "provider payer rsfui4ahy.gm (PowerUp, renewed before expiry)",
+				"ram": "not auto-bought"
+			},
 			"min_ms": 5,
 			"min_kb": 5,
 			"inc_ms": 10,
@@ -395,13 +804,44 @@
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 0,
 			"inc_ram_kb": 0,
-			"ram_daily_max_fee": 0
+			"ram_daily_max_fee": 0,
+			"authority": [
+				{
+					"permission": "any",
+					"location": "not recorded"
+				}
+			]
 		}
 	],
 	"selfManaged": [
 		{
 			"account": "rsfui4ahy.gm",
-			"usedBy": "Resource Provider payer (@manager) and RNG oracle signer @1; funds every row above"
+			"role": "provider payer and oracle signer",
+			"usedBy": "Resource Provider payer (@manager) and RNG oracle signer @1; funds every row above",
+			"pays": {
+				"cpu_net": "itself (self-management PowerUp)",
+				"ram": "itself"
+			},
+			"min_ms": 3,
+			"min_balance": "150.0000 EOS",
+			"authority": [
+				{
+					"permission": "owner",
+					"location": "local WharfKit wallet on the primary Mac (cxvh89)"
+				},
+				{
+					"permission": "manager",
+					"location": "GCP buildflexity-app resource-provider.service configuration"
+				},
+				{
+					"permission": "funding",
+					"location": "GCP /etc/resource-provider/env MANAGED_BALANCE_TOPUP_PRIVATEKEY (transfer only)"
+				},
+				{
+					"permission": "oracle signer @1",
+					"location": "GCP rng-oracle@1 service configuration; exact permission not verified"
+				}
+			]
 		}
 	],
 	"balanceTopups": "fbrampay.gm=150.0000 EOS/100.0000 EOS/300.0000 EOS,rammgrtest11=5.0000 EOS/10.0000 EOS/20.0000 EOS",
@@ -413,6 +853,65 @@
 		{
 			"account": "hks*/yvc* fixture players",
 			"why": "canary player fixtures; sponsored like real players"
+		}
+	],
+	"appRepos": [
+		"dafuga/chainmate",
+		"dafuga/ram-provider",
+		"dafuga/rng-aetherroll",
+		"dafuga/rng-blackjack",
+		"dafuga/rng-card",
+		"dafuga/rng-craps",
+		"dafuga/rng-fatebound",
+		"dafuga/rng-frontier",
+		"dafuga/rng-lane-legacy",
+		"dafuga/rng-lottery",
+		"dafuga/rng-pig-care",
+		"dafuga/rng-pokemon",
+		"dafuga/rng-poker",
+		"dafuga/rng-racing",
+		"dafuga/rng-tamagotchi"
+	],
+	"hiddenAccountNames": [
+		"rng-lottery keeper: KEEPER_ACTOR is a Worker secret, so the config scan cannot see it",
+		"rng-racing finalizer: FINALIZER_ACCOUNT is a Worker secret, so the config scan cannot see it"
+	],
+	"exampleNames": [
+		{
+			"name": "account.gm",
+			"why": "placeholder text in Chainmate messages"
+		},
+		{
+			"name": "achiever.gm",
+			"why": "usage example in the rng-poker bot CLI help"
+		},
+		{
+			"name": "other.gm",
+			"why": "usage example in the rng-poker bot CLI help"
+		},
+		{
+			"name": "lottokeep.gm",
+			"why": "setup example in rng-lottery scripts/keeper.ts; not on chain"
+		},
+		{
+			"name": "opponent.gm",
+			"why": "placeholder text in Card Duel"
+		},
+		{
+			"name": "practice.gm",
+			"why": "local practice actor in Pokemon; not on chain"
+		},
+		{
+			"name": "rivalbot.gm",
+			"why": "usage example in Chainmate script help; not on chain"
+		},
+		{
+			"name": "tester.gm",
+			"why": "e2e mock session in Tamagotchi"
+		},
+		{
+			"name": "treasury.gm",
+			"why": "e2e fixture in Frontier; not on chain"
 		}
 	]
 }
