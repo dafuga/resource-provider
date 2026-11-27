@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Slack DM leg and runway watch for the Resource Provider relay (tracker ztryv8).
 
-Daniel is DMed by the BuildFlexity Alerts bot (a bot DM notifies; a self-DM does not).
+Daniel is DMed by dafuga's bot (a bot DM notifies; a self-DM does not).
 The bot token is read from Google Secret Manager into memory only when a call is made.
 It is never printed, logged or written to disk.
 
@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo
 
 DANIEL = "U0CHQLXDT4K"
 SECRET = ["/opt/homebrew/bin/gcloud", "secrets", "versions", "access", "latest",
-          "--secret=buildflexity-slack-qa-bot-token", "--project=buildflexity-app"]
+          "--secret=dafugas-bot-slack-token", "--project=buildflexity-app"]
 POOL = ("rsfui4ahy.gm", "fbrampay.gm", "rammgrtest11")
 PAYER = POOL[0]
 RPCS = ("https://jungle4.greymass.com", "https://jungle4.cryptolions.io")
@@ -63,8 +63,12 @@ def slack(method, payload):
     return result
 
 
+def dm_channel():
+    return slack("conversations.open", {"users": DANIEL})["channel"]["id"]
+
+
 def send_dm(text):
-    return slack("chat.postMessage", {"channel": DANIEL, "text": text, "unfurl_links": False})
+    return slack("chat.postMessage", {"channel": dm_channel(), "text": text, "unfurl_links": False})
 
 
 def read_balances():
@@ -196,11 +200,11 @@ def check(state, provider_keys, now, io):
 
 def live_io(fallback):
     def schedule(post_at, text):
-        return slack("chat.scheduleMessage", {"channel": DANIEL, "post_at": post_at, "text": text})[
+        return slack("chat.scheduleMessage", {"channel": dm_channel(), "post_at": post_at, "text": text})[
             "scheduled_message_id"]
 
     def unschedule(message_id):
-        slack("chat.deleteScheduledMessage", {"channel": DANIEL, "scheduled_message_id": message_id})
+        slack("chat.deleteScheduledMessage", {"channel": dm_channel(), "scheduled_message_id": message_id})
 
     return {"balances": read_balances, "burn": read_burn, "send": send_dm,
             "schedule": schedule, "unschedule": unschedule, "fallback": fallback}

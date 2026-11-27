@@ -4,9 +4,9 @@
 Tracker item dnx8hx / alert inbox eha6tr (2026-11-25, alert-only deploy of 2e4f6d8).
 Runs every 5 minutes from launchd (local.rp-alert-relay). Reads only `ALERT:` / `RESOLVED:`
 lines of resource-provider.service over IAP SSH, and:
-  - flags the inbox item on a new firing alert (and re-flags at most every 6h while firing);
-    cpu-low and payer-dry flap, so they are delivered only once they persist (the service
-    re-logs a still-firing alert, normally 30 minutes later)
+  - records cpu-low, payer-dry and ram-cap episodes immediately, including short episodes
+    that clear before the next poll; the CoS pager handles their acknowledgement deadline
+  - flags other new firing alerts, with a six-hour minimum between reminders
   - sends every due alert in ONE flag, so one flag never overwrites another in the same run;
     a flag the CLI refuses is not marked sent and is retried on the next run
   - flags once if the 15-minute coverage check (coverage_notify.py, 3vhnkz) stops running
@@ -31,12 +31,11 @@ GCLOUD = "/opt/homebrew/bin/gcloud"
 SSH = [GCLOUD, "compute", "ssh", "buildflexity-app", "--project", "buildflexity-app",
        "--zone", "northamerica-northeast1-a", "--tunnel-through-iap", "--quiet", "--command"]
 # cxvh89 (26 Nov): also per-account failures and liquid-balance floors for the sponsor RAM payers.
-# 3vhnkz: also lease-expiring and ram-cap, plus cpu-low / payer-dry once they persist.
-PERSISTENT = ("cpu-low:", "payer-dry:")
+# These incidents can affect a live game even if they clear within a polling interval.
+CRITICAL = ("cpu-low:", "payer-dry:", "ram-cap:")
 RELAYED = ("payer-balance:", "payer-funding:", "self-stale", "self-verify",
            "balance-low:", "balance-funding:", "manage-failed:",
-           "lease-expiring:", "ram-cap:", *PERSISTENT)
-PERSIST_SECONDS = 25 * 60
+           "lease-expiring:", "ram-max-fee:", *CRITICAL)
 # The service re-logs a firing alert every 30 min and forgets it on restart without logging
 # RESOLVED, so an alert silent for this long is over.
 FIRING_WINDOW = 2 * 3600
@@ -94,15 +93,15 @@ def read_journal(cursor):
         since = f"'--after-cursor={cursor}'"
     else:
         since = "--since=-15min"
-    remote = (f"sudo journalctl -u resource-provider --no-pager -o cat --show-cursor {since}"
-              " | grep -E '(ALERT|RESOLVED): |^-- cursor: ' | tail -n 400; echo __RP_RELAY_OK__")
+    remote = (f"set -o pipefail; sudo journalctl -u resource-provider --no-pager -o cat --show-cursor {since}"
+              " | awk '/(ALERT|RESOLVED): |^-- cursor: /'")
     out = subprocess.run([*SSH, remote], capture_output=True, text=True, timeout=120)
-    if "__RP_RELAY_OK__" not in out.stdout:
+    if out.returncode:
         raise RuntimeError(f"ssh exit {out.returncode}")
     return out.stdout.splitlines()
 
 
-def apply_lines(keys, lines, now, note):
+def apply_lines(keys, lines, now, note, pending):
     """Fold new journal lines into the per-alert state."""
     for raw in lines:
         m = LINE.match(raw.strip())
@@ -117,18 +116,24 @@ def apply_lines(keys, lines, now, note):
             continue
         entry = keys.setdefault(key, {"active": False, "flagged_at": 0})
         if kind == "ALERT":
-            # A repeat of an episode that is still open proves it persisted.
             if not entry["active"] or now - entry.get("last_seen", 0) > FIRING_WINDOW:
-                # flagged_at survives episodes: a flapping alert is flagged at most every 6h.
                 entry.update(active=True, since=now, delivered=False)
+                entry.pop("critical_event", None)
+            if key.startswith(CRITICAL) and not entry.get("critical_event"):
+                event = f"{at} {key}"
+                entry["critical_event"] = event
+                pending[event] = {"alert": f"[P1 player] [resource-provider] {event}: {message[:300]}"}
             entry["last_seen"] = now
             entry["at"] = at
             entry["message"] = message[:300]
         elif entry["active"]:
             entry["active"] = False
             # Only say "resolved" about something that was actually delivered.
-            if entry.get("delivered"):
-                note(f"[resource-provider] RESOLVED {at}: {message} (key {key})")
+            recovery = f"[resource-provider] RESOLVED {at}: {message} (key {key})"
+            if event := entry.pop("critical_event", None):
+                pending.setdefault(event, {})["recovery"] = recovery
+            elif entry.get("delivered"):
+                note(recovery)
 
 
 def due_alerts(keys, now):
@@ -136,7 +141,7 @@ def due_alerts(keys, now):
     for key, entry in keys.items():
         if not entry.get("active") or now - entry.get("last_seen", 0) > FIRING_WINDOW:
             continue
-        if key.startswith(PERSISTENT) and entry["last_seen"] - entry.get("since", now) < PERSIST_SECONDS:
+        if key.startswith(CRITICAL):
             continue
         if now - entry.get("flagged_at", 0) >= REFLAG_SECONDS:
             due.append(key)
@@ -154,6 +159,22 @@ def send_due(keys, now, flag):
             "account from our Jungle 4 test accounts."):
         for key in due:
             keys[key].update(flagged_at=now, delivered=True)
+
+
+def send_critical(pending, notify):
+    """Persist each successful operation and retry failed operations in order."""
+    for event, messages in list(pending.items()):
+        if "alert" in messages:
+            verb, message = "alert", messages["alert"]
+            if "recovery" in messages:
+                # A batch can contain a whole episode. Retain evidence without opening a P1.
+                verb, message = "note", message.replace("[P1 player] ", "[resolved replay] ", 1)
+            if not notify(verb, ITEM, message):
+                continue
+            del messages["alert"]
+        if "recovery" not in messages or notify("note", ITEM, messages["recovery"]):
+            del pending[event]
+    return not pending
 
 
 def check_coverage_alive(state, now, path=COVERAGE_STATE):
@@ -183,13 +204,14 @@ def main():
     except Exception as error:  # noqa: BLE001 - any failure counts as unreachable
         state["failures"] = state.get("failures", 0) + 1
         if state["failures"] >= 3 and not state.get("failure_flagged"):
-            tracker("flag", ITEM, f"RP alert relay cannot read the buildflexity-app journal for "
+            state["failure_flagged"] = tracker("flag", ITEM, f"RP alert relay cannot read the buildflexity-app journal for "
                     f"{state['failures']} runs ({type(error).__name__}). Alerts are still logged on "
                     "the VM but not reaching the tracker. Check gcloud auth / IAP from the primary Mac.",
                     "--option", "Fix relay access=a session restores gcloud/IAP access for the relay",
                     "--option", "Watch only=leave it; the relay retries every 5 minutes",
                     "--recommend", "1")
-            state["failure_flagged"] = True
+        send_critical(state.setdefault("critical_pending", {}), tracker)
+        save(state)
         slack_watch(state, now)
         save(state)
         return 1
@@ -198,12 +220,21 @@ def main():
     state["failures"], state["failure_flagged"] = 0, False
 
     keys = state.setdefault("keys", {})
-    apply_lines(keys, lines, now, lambda text: tracker("note", ITEM, text))
+    pending = state.setdefault("critical_pending", {})
+    apply_lines(keys, lines, now, lambda text: tracker("note", ITEM, text), pending)
+    for line in reversed(lines):
+        if line.startswith("-- cursor: "):
+            state["cursor"] = line.removeprefix("-- cursor: ")
+            break
+    # Save the journal position and unsent queue together before attempting delivery.
+    save(state)
+    critical_ok = send_critical(pending, tracker)
+    save(state)
     send_due(keys, now, lambda text: tracker("flag", ITEM, text, *FLAG_OPTIONS))
     check_coverage_alive(state, now)
     slack_watch(state, now)
     save(state)
-    return 0
+    return 0 if critical_ok else 1
 
 
 if __name__ == "__main__":
