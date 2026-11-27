@@ -17,7 +17,7 @@
 			"max_fee": "1.0000 EOS",
 			"min_ram_kb": 4,
 			"inc_ram_kb": 10,
-			"ram_daily_max_fee": 2,
+			"ram_daily_max_fee": 10,
 			"gates": [
 				{
 					"cpu_us": 30000,
@@ -389,7 +389,7 @@
 			"inc_kb": 10,
 			"max_fee": "0.2500 EOS",
 			"min_ram_kb": 700,
-			"inc_ram_kb": 700,
+			"inc_ram_kb": 10,
 			"ram_daily_max_fee": 0,
 			"authority": [
 				{
