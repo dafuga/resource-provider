@@ -10,18 +10,15 @@ import re
 import subprocess
 import time
 
-from watch import get_json, log
+import watch
+from watch import log
 
 TRACKER = Path.home() / ".local/bin/tracker"
 TMUX = "/opt/homebrew/bin/tmux"
 STATE = Path.home() / ".local/state/player-pager.json"
-JOT_CHANNEL = "D0CJ0JX361J"
-JOT_USER = "U0CHQLXDT4K"
-JOT_WORKSPACE = "T0CHRK2DS0M"
-JOT_SECRET = [
-    "/opt/homebrew/bin/gcloud", "secrets", "versions", "access", "latest",
-    "--project=buildflexity-app", "--secret=rng-player-pager-jot-token",
-]
+SLACK_DM = "D0CN4BTE5TJ"
+SLACK_BOT = "B0CN4BTDN6L"
+SLACK_WORKSPACE = "T0CHRK2DS0M"
 ACK_SECONDS = 15 * 60
 RETENTION_SECONDS = 24 * 3600
 ALERT_NOTE = "watchdog alert: "
@@ -104,7 +101,7 @@ def ingest(state, items):
                 break
 
 
-def process(state, now, cos, reflag, jot, save):
+def process(state, now, cos, reflag, slack_dm, save):
     failed = False
     for event_id, event in list(state["events"].items()):
         deadline = event["detected_at"] + ACK_SECONDS
@@ -140,10 +137,10 @@ def process(state, now, cos, reflag, jot, save):
                 save()
             else:
                 failed = True
-        if "jot_receipt" not in event:
-            receipt = jot(message)
+        if "slack_receipt" not in event:
+            receipt = slack_dm(message)
             if receipt:
-                event["jot_receipt"] = receipt
+                event["slack_receipt"] = receipt
                 save()
             else:
                 failed = True
@@ -153,7 +150,7 @@ def process(state, now, cos, reflag, jot, save):
     for event_id, event in list(state["events"].items()):
         deadline = event["detected_at"] + ACK_SECONDS
         completed = event.get("ack_at", float("inf")) <= deadline or (
-            "reflag_at" in event and "jot_receipt" in event
+            "reflag_at" in event and "slack_receipt" in event
         )
         if completed and event["detected_at"] < state["start"]:
             del state["events"][event_id]
@@ -183,22 +180,19 @@ def deliver_to_cos(message):
     return True
 
 
-def send_to_jot(message):
-    # Use only the dedicated, authorized self-DM binding. Keep API errors and token contents private.
-    token = command(JOT_SECRET)
-    if not token:
-        raise RuntimeError("Jot token file empty")
-    headers = {"Authorization": f"Bearer {token}"}
-    identity = get_json("https://slack.com/api/auth.test", {}, headers)
-    if (not identity.get("ok") or identity.get("user_id") != JOT_USER
-            or identity.get("team_id") != JOT_WORKSPACE or identity.get("bot_id")):
-        raise RuntimeError("Jot account mismatch")
-    result = get_json("https://slack.com/api/chat.postMessage", {
-        "channel": JOT_CHANNEL, "text": message, "unfurl_links": False,
-    }, headers)
+def send_slack_page(message):
+    """Send through the approved bot to its existing conversation with Daniel."""
+    identity = watch.slack("auth.test", {})
+    if identity.get("bot_id") != SLACK_BOT or identity.get("team_id") != SLACK_WORKSPACE:
+        raise RuntimeError("Slack bot or workspace mismatch")
+    if watch.dm_channel() != SLACK_DM:
+        raise RuntimeError("Slack DM mismatch")
+    result = watch.slack("chat.postMessage", {
+        "channel": SLACK_DM, "text": message, "unfurl_links": False,
+    })
     receipt = result.get("ts", "")
-    if not result.get("ok") or result.get("channel") != JOT_CHANNEL or not re.fullmatch(r"\d+\.\d+", receipt):
-        raise RuntimeError("Jot post not confirmed")
+    if result.get("channel") != SLACK_DM or not re.fullmatch(r"\d+\.\d+", receipt):
+        raise RuntimeError("Slack DM post not confirmed")
     return receipt
 
 
@@ -249,7 +243,7 @@ def main():
     # A Tracker read failure leaves the last state intact and exits nonzero.
     save()
     return 0 if process(state, time.time(), attempt("CoS", deliver_to_cos),
-                        attempt("Tracker escalation", reflag), attempt("Jot", send_to_jot), save) else 1
+                        attempt("Tracker escalation", reflag), attempt("Slack DM", send_slack_page), save) else 1
 
 
 if __name__ == "__main__":

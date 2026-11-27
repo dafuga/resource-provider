@@ -33,7 +33,7 @@ class PlayerPagerTest(unittest.TestCase):
             return send
 
         return pager.process(self.state, at, record("cos", cos), record("tracker", reflag),
-                             record("jot", dm), lambda: None)
+                             record("slack", dm), lambda: None)
 
     def incident(self):
         pager.ingest(self.state, [inbox(note(pager.ALERT_NOTE + MESSAGE, T + 300))])
@@ -54,8 +54,8 @@ class PlayerPagerTest(unittest.TestCase):
         self.assertEqual(len(self.calls), 1)
         self.assertTrue(self.run_at(T + pager.ACK_SECONDS))
         self.run_at(T + pager.ACK_SECONDS + 60)
-        self.assertEqual([action for action, _ in self.calls], ["cos", "tracker", "jot"])
-        self.assertEqual(self.state["events"][event]["jot_receipt"], "123.456")
+        self.assertEqual([action for action, _ in self.calls], ["cos", "tracker", "slack"])
+        self.assertEqual(self.state["events"][event]["slack_receipt"], "123.456")
 
     def test_a_failed_daytime_leg_retries_and_late_ack_keeps_the_sla_miss(self):
         daytime = T + 10 * 3600
@@ -65,7 +65,7 @@ class PlayerPagerTest(unittest.TestCase):
         self.assertFalse(self.run_at(daytime + pager.ACK_SECONDS, dm=False))
         pager.ingest(self.state, [inbox(note(f"P1 ACK {event}", daytime + pager.ACK_SECONDS + 1))])
         self.assertTrue(self.run_at(daytime + pager.ACK_SECONDS + 60))
-        self.assertEqual([action for action, _ in self.calls], ["cos", "tracker", "jot", "jot"])
+        self.assertEqual([action for action, _ in self.calls], ["cos", "tracker", "slack", "slack"])
 
     def test_multiple_occurrences_one_inbox_and_ignores_generated_escalations(self):
         event = self.incident()
@@ -91,15 +91,22 @@ class PlayerPagerTest(unittest.TestCase):
         ])
         self.assertEqual(len(self.state["events"]), 2)
 
-    def test_jot_uses_only_the_expected_identity_and_self_dm_channel(self):
-        with patch.object(pager, "command", return_value="test-fixture"), patch.object(pager, "get_json") as request:
-            request.return_value = {"ok": True, "user_id": "someone-else"}
-            with self.assertRaisesRegex(RuntimeError, "Jot account mismatch"):
-                pager.send_to_jot("test")
-            self.assertEqual(request.call_count, 1)
-            request.side_effect = [
-                {"ok": True, "user_id": pager.JOT_USER, "team_id": pager.JOT_WORKSPACE},
-                {"ok": True, "channel": pager.JOT_CHANNEL, "ts": "100.200"},
-            ]
-            self.assertEqual(pager.send_to_jot("test"), "100.200")
-            self.assertEqual(request.call_args.args[1]["channel"], pager.JOT_CHANNEL)
+    def test_slack_page_uses_only_the_expected_bot_and_existing_dm(self):
+        identity = {"bot_id": pager.SLACK_BOT, "team_id": pager.SLACK_WORKSPACE}
+        with patch.object(pager.watch, "slack") as slack, patch.object(pager.watch, "dm_channel") as dm:
+            slack.return_value = {"bot_id": "other-bot", "team_id": pager.SLACK_WORKSPACE}
+            with self.assertRaisesRegex(RuntimeError, "Slack bot or workspace mismatch"):
+                pager.send_slack_page("test")
+            dm.assert_not_called()
+            slack.return_value = identity
+            dm.return_value = "other-channel"
+            with self.assertRaisesRegex(RuntimeError, "Slack DM mismatch"):
+                pager.send_slack_page("test")
+            self.assertEqual([call.args[0] for call in slack.call_args_list], ["auth.test", "auth.test"])
+
+            dm.return_value = pager.SLACK_DM
+            slack.side_effect = [identity, {"channel": pager.SLACK_DM, "ts": "100.200"}]
+            self.assertEqual(pager.send_slack_page("test"), "100.200")
+            self.assertEqual(slack.call_args.args, ("chat.postMessage", {
+                "channel": pager.SLACK_DM, "text": "test", "unfurl_links": False,
+            }))

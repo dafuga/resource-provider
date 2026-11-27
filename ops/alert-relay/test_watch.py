@@ -1,5 +1,6 @@
 import datetime as dt
 import unittest
+from unittest.mock import patch
 
 import watch
 
@@ -103,6 +104,20 @@ class WatchTest(unittest.TestCase):
         fake.fail_send = False
         watch.check(state, {}, NOON + 600, fake.io())
         self.assertEqual(len(fake.sent), 1)
+
+    def test_dm_and_scheduled_messages_use_opened_recipient_conversation(self):
+        calls = []
+        def slack(method, payload):
+            calls.append((method, payload))
+            return {"channel": {"id": "DTEST"}} if method == "conversations.open" else {"scheduled_message_id": "QTEST"}
+        with patch.object(watch, "slack", side_effect=slack):
+            watch.send_dm("test")
+            io = watch.live_io(lambda message: True)
+            io["schedule"](123, "monitor stopped")
+            io["unschedule"]("QTEST")
+        self.assertEqual([method for method, _ in calls], ["conversations.open", "chat.postMessage", "conversations.open", "chat.scheduleMessage", "conversations.open", "chat.deleteScheduledMessage"])
+        self.assertTrue(all(payload.get("users") == watch.DANIEL for method, payload in calls if method == "conversations.open"))
+        self.assertTrue(all(payload.get("channel") == "DTEST" for method, payload in calls if method != "conversations.open"))
 
     def test_deadman_rolls_forward_and_stops_when_chain_is_down(self):
         fake, state = Fake(), {}

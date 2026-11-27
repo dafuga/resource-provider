@@ -23,17 +23,19 @@ the Tracker note time, or first available flag update time for older producers.
 
 The pager polls every minute. At the first poll at or after the deadline it
 records a fresh escalation with `tracker alert` on the same item and posts to
-Daniel's Jot self-DM. Each leg retries independently and successful deliveries
+Daniel's existing DM with dafuga's bot. Each leg retries independently and successful deliveries
 are recorded under `~/.local/state/player-pager.json`. Slack acceptance establishes
 a delivery receipt. CoS acknowledgement is recorded separately on Tracker.
 
 ## Activation on the primary Mac
 
-The Jot leg requires an authorized Daniel-user Slack binding in Secret Manager,
-project `buildflexity-app`, secret `rng-player-pager-jot-token`. Provision it
-through the approved credential path. The pager checks the Slack account and
-workspace before posting and verifies the response names Jot. The existing
-Resource Provider bot sends to its own DM conversation.
+The Slack leg uses the existing dafuga's bot integration, app `A0CM7UBDKP0`.
+Its token remains in Secret Manager, project `buildflexity-app`, secret
+`dafugas-bot-slack-token`. The pager uses the Resource Provider's Slack
+helper to check the bot and workspace, open the established conversation
+with Daniel, and verify that the post response names the same DM
+(`D0CN4BTE5TJ`). Use the installed bot-enabled `watch.py` that matches this
+release. Preserve the running provider's Slack and dead-man state.
 
 After approval, compare the installed relay to the release and preserve a
 timestamped copy of `relay.py` and its journal state. Install only the reviewed
